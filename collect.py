@@ -27,14 +27,15 @@ for item in results['items']:
     track = item['track']
     track_id = track['id']
     played_at = datetime.fromisoformat(item['played_at'].replace('Z', '+00:00'))
+    album_name = track['album']['name']
     
     try:
         #Saving the event
         cur.execute("""
-            INSERT INTO listening_events (played_at, track_id, track_name, artist_name)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO listening_events (played_at, track_id, track_name, artist_name, album_name)
+            VALUES (%s, %s, %s, %s, %s)
             ON CONFLICT (played_at) DO NOTHING
-        """, (played_at, track_id, track['name'], track['artists'][0]['name']))
+        """, (played_at, track_id, track['name'], track['artists'][0]['name'], album_name))
         
         if cur.rowcount > 0:
             saved_events += 1

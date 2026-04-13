@@ -42,6 +42,7 @@ for file_path in json_files:
         
         track_name = track.get("master_metadata_track_name")
         artist_name = track.get("master_metadata_album_artist_name")
+        album_name = track.get("master_metadata_album_album_name")
         
         #Skip if no name or artist
         if not track_name or not artist_name:
@@ -49,10 +50,10 @@ for file_path in json_files:
         
         #Enter to the db
         cur.execute("""
-            INSERT INTO listening_events (played_at, track_id, track_name, artist_name)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO listening_events (played_at, track_id, track_name, artist_name, album_name)
+            VALUES (%s, %s, %s, %s, %s)
             ON CONFLICT (played_at) DO NOTHING
-        """, (played_at, track_id, track_name, artist_name))
+        """, (played_at, track_id, track_name, artist_name, album_name))
         
         if cur.rowcount > 0:
             total_inserted += 1
