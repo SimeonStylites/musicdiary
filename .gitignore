@@ -208,3 +208,6 @@ __marimo__/
 
 
 .vscode
+my_spotify_data/
+*.zip
+*.json
