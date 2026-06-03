@@ -5,6 +5,8 @@ from dotenv import load_dotenv
 import os
 import time
 
+load_dotenv()
+
 def get_spotify_client():
     return spotipy.Spotify(auth_manager=SpotifyOAuth(
         client_id=os.getenv("SPOTIFY_CLIENT_ID"),
@@ -13,7 +15,7 @@ def get_spotify_client():
         scope="user-read-recently-played"
     ))
 
-def get_tracks_without_album_id(conn, limit=50):
+def get_track_ids_without_album(conn, limit=10000):
     cur = conn.cursor()
     cur.execute("""
         SELECT DISTINCT track_id, track_name, artist_name
@@ -31,17 +33,24 @@ def update_track_album_id(conn, track_id, album_id):
     cur.execute("""
         UPDATE listening_events 
         SET album_id = %s 
-        WHERE track_id = %s AND album_id IS NULL
+        WHERE track_id = %s
     """, (album_id, track_id))
     conn.commit()
     cur.close()
 
-def save_album_info(conn, album_id, album_name, artist_name, total_tracks, release_date):
+def save_album(conn, album_info):
     cur = conn.cursor()
+    album_id = album_info['id']
+    album_name = album_info['name']
+    artist_name = album_info['artists'][0]['name']
+    total_tracks = album_info['total_tracks']
+    release_date = album_info['release_date']
+    
     if release_date and len(release_date) == 4:
-        release_date = f"{release_date}-01-01"  # 2004 -> 2004-01-01
+        release_date = f"{release_date}-01-01"
     elif release_date and len(release_date) == 7:
-        release_date = f"{release_date}-01"      # 2004-05 -> 2004-05-01
+        release_date = f"{release_date}-01"
+    
     cur.execute("""
         INSERT INTO albums (album_id, album_name, artist_name, total_tracks, release_date)
         VALUES (%s, %s, %s, %s, %s)
@@ -51,37 +60,55 @@ def save_album_info(conn, album_id, album_name, artist_name, total_tracks, relea
     cur.close()
 
 def main():
-    load_dotenv()
     conn = psycopg2.connect(os.getenv("DATABASE_URL"))
     sp = get_spotify_client()
     
-    tracks = get_tracks_without_album_id(conn, limit=100)
-    print(f"Tracks without album_id: {len(tracks)}")
+    tracks = get_track_ids_without_album(conn, limit=7000)
+    print(f"Найдено треков без album_id: {len(tracks)}")
     
-    for track_id, track_name, artist_name in tracks:
+    total_updated = 0
+    # Обрабатываем пачками по 50 треков
+    for i in range(0, len(tracks), 50):
+        batch = tracks[i:i+50]
+        batch_ids = [track[0] for track in batch if track[0]]
+        
         try:
-            #Getting track info
-            track_info = sp.track(track_id)
-            album = track_info['album']
-            album_id = album['id']
-            album_name = album['name']
-            artist_name_album = album['artists'][0]['name']
-            total_tracks = album['total_tracks']
-            release_date = album['release_date']
+            # Массовый запрос к API
+            tracks_info = sp.tracks(batch_ids)
             
-            #Saving album_id in listening_events
-            update_track_album_id(conn, track_id, album_id)
+            for j, track_info in enumerate(tracks_info['tracks']):
+                if track_info:
+                    track_id = batch[j][0]
+                    album = track_info['album']
+                    album_id = album['id']
+                    
+                    # Сохраняем альбом
+                    save_album(conn, album)
+                    # Обновляем трек
+                    update_track_album_id(conn, track_id, album_id)
+                    total_updated += 1
+                    
+                    print(f"✅ {batch[j][1]} - {batch[j][2]} → альбом: {album['name']}")
+                else:
+                    print(f"⚠️ Не найден трек: {batch[j][1]}")
             
-            #Saving album info
-            save_album_info(conn, album_id, album_name, artist_name_album, total_tracks, release_date)
-            
-            print(f"{track_name} -> {album_name} ({total_tracks} tracks)")
-            time.sleep(2)  #Pause for API limits
+            time.sleep(0.3)  # Пауза между пачками
             
         except Exception as e:
-            print(f"Error for {track_name}: {e}")
+            print(f"❌ Ошибка в пачке {i//50 + 1}: {e}")
+            time.sleep(2)
+            continue
     
+    print(f"\n✅ Обновлено треков: {total_updated}")
+    
+    # Финальная проверка
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM listening_events WHERE album_id IS NULL")
+    remaining = cur.fetchone()[0]
+    cur.close()
     conn.close()
+    
+    print(f"Осталось треков без album_id: {remaining}")
 
 if __name__ == "__main__":
     main()

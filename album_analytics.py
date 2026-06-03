@@ -3,98 +3,161 @@ from dotenv import load_dotenv
 import os
 
 load_dotenv()
-conn = psycopg2.connect(os.getenv("DATABASE_URL"))
-cur = conn.cursor()
 
-#1.Top10 albums
-print("=== Top-10 albums ===")
-cur.execute("""
-    SELECT album_name, artist_name, COUNT(*) as plays
-    FROM listening_events
-    WHERE album_name IS NOT NULL
-    GROUP BY album_name, artist_name
-    ORDER BY plays DESC
-    LIMIT 10
-""")
-for row in cur.fetchall():
-    print(f"  {row[0]} - {row[1]} ({row[2]} plays)")
+def get_connection():
+    return psycopg2.connect(os.getenv("DATABASE_URL"))
 
-#2.Listened albums
-#TODO make albums table, with total_tracks
-print("\n=== Albums, you've listened ===")
-cur.execute("""
-    WITH album_tracks AS (
-        SELECT album_name, artist_name, COUNT(DISTINCT track_id) as total_tracks
-        FROM listening_events
-        WHERE album_name IS NOT NULL
-        GROUP BY album_name, artist_name
-    ),
-    listened_tracks AS (
-        SELECT album_name, artist_name, COUNT(DISTINCT track_id) as listened_tracks
-        FROM listening_events
-        WHERE album_name IS NOT NULL
-        GROUP BY album_name, artist_name
-    )
-    SELECT at.album_name, at.artist_name, at.total_tracks
-    FROM album_tracks at
-    JOIN listened_tracks lt ON at.album_name = lt.album_name AND at.artist_name = lt.artist_name
-    WHERE at.total_tracks = lt.listened_tracks
-    ORDER BY at.total_tracks DESC
-""")
-for row in cur.fetchall():
-    print(f"  {row[0]} - {row[1]} ({row[2]} tracks)")
+def print_section(title, results, headers):
+    print(f"\n{'='*60}")
+    print(f"=== {title}")
+    print('='*60)
+    if not results:
+        print("  (no data)")
+        return
+    header_line = "  ".join([f"{h:<35}" for h in headers])
+    print(header_line)
+    print("-" * len(header_line))
+    for row in results:
+        row_str = "  ".join([f"{str(col)[:35]:<35}" for col in row])
+        print(row_str)
 
-#3.1-2 tracks missing
-print("\n=== Albums without 1-2 tracks ===")
-cur.execute("""
-    WITH album_tracks AS (
-        SELECT album_name, artist_name, COUNT(DISTINCT track_id) as total_tracks
-        FROM listening_events
-        WHERE album_name IS NOT NULL
-        GROUP BY album_name, artist_name
-    ),
-    listened_tracks AS (
-        SELECT album_name, artist_name, COUNT(DISTINCT track_id) as listened_tracks
-        FROM listening_events
-        WHERE album_name IS NOT NULL
-        GROUP BY album_name, artist_name
-    )
-    SELECT at.album_name, at.artist_name, at.total_tracks, lt.listened_tracks,
-           at.total_tracks - lt.listened_tracks as missing
-    FROM album_tracks at
-    JOIN listened_tracks lt ON at.album_name = lt.album_name AND at.artist_name = lt.artist_name
-    WHERE at.total_tracks - lt.listened_tracks BETWEEN 1 AND 2
-    ORDER BY missing, at.total_tracks DESC
-    LIMIT 10
-""")
-for row in cur.fetchall():
-    print(f"  {row[0]} - {row[1]} (listened {row[3]}/{row[2]}, left {row[4]})")
+def main():
+    conn = get_connection()
+    cur = conn.cursor()
 
-#4.Started not finished
-print("\n=== Albums started, but not finished (<30%) ===")
-cur.execute("""
-    WITH album_tracks AS (
-        SELECT album_name, artist_name, COUNT(DISTINCT track_id) as total_tracks
-        FROM listening_events
-        WHERE album_name IS NOT NULL
-        GROUP BY album_name, artist_name
-    ),
-    listened_tracks AS (
-        SELECT album_name, artist_name, COUNT(DISTINCT track_id) as listened_tracks
-        FROM listening_events
-        WHERE album_name IS NOT NULL
-        GROUP BY album_name, artist_name
-    )
-    SELECT at.album_name, at.artist_name, at.total_tracks, lt.listened_tracks,
-           ROUND(100.0 * lt.listened_tracks / at.total_tracks, 1) as percent
-    FROM album_tracks at
-    JOIN listened_tracks lt ON at.album_name = lt.album_name AND at.artist_name = lt.artist_name
-    WHERE lt.listened_tracks < 0.3 * at.total_tracks
-    ORDER BY percent ASC
-    LIMIT 10
-""")
-for row in cur.fetchall():
-    print(f"  {row[0]} - {row[1]} ({row[3]}/{row[2]} tracks, {row[4]}%)")
+    #1. All entirely listened albums
+    cur.execute("""
+        WITH album_stats AS (
+            SELECT 
+                a.album_id,
+                a.album_name,
+                a.total_tracks,
+                ar.artist_name,
+                COUNT(DISTINCT le.track_id) as listened_tracks
+            FROM albums a
+            JOIN artists ar ON a.artist_id = ar.artist_id
+            JOIN listening_events le ON a.album_id = le.album_id
+            WHERE a.total_tracks IS NOT NULL AND a.total_tracks > 0
+            GROUP BY a.album_id, a.album_name, a.total_tracks, ar.artist_name
+        )
+        SELECT album_name, artist_name, total_tracks, listened_tracks
+        FROM album_stats
+        WHERE listened_tracks = total_tracks
+        ORDER BY total_tracks DESC
+    """)
+    results = cur.fetchall()
+    print_section("Entirely listened albums", 
+                  results, ["Album", "Artist", "Tracks", "Tracks listened"])
 
-cur.close()
-conn.close()
+    #2. Same with 5+ tracks
+    cur.execute("""
+        WITH album_stats AS (
+            SELECT 
+                a.album_id,
+                a.album_name,
+                a.total_tracks,
+                ar.artist_name,
+                COUNT(DISTINCT le.track_id) as listened_tracks
+            FROM albums a
+            JOIN artists ar ON a.artist_id = ar.artist_id
+            JOIN listening_events le ON a.album_id = le.album_id
+            WHERE a.total_tracks IS NOT NULL AND a.total_tracks >= 5
+            GROUP BY a.album_id, a.album_name, a.total_tracks, ar.artist_name
+        )
+        SELECT album_name, artist_name, total_tracks, listened_tracks
+        FROM album_stats
+        WHERE listened_tracks = total_tracks
+        ORDER BY total_tracks DESC
+    """)
+    results = cur.fetchall()
+    print_section("Entirely listened albums (5+ Tracks)", 
+                  results, ["Album", "Artist", "Tracks", "Listened tracks"])
+
+    #3.How many entirely listened (by length)
+    cur.execute("""
+        WITH album_stats AS (
+            SELECT 
+                a.album_id,
+                a.total_tracks,
+                COUNT(DISTINCT le.track_id) as listened_tracks,
+                CASE 
+                    WHEN a.total_tracks = 1 THEN '1 track'
+                    WHEN a.total_tracks BETWEEN 2 AND 4 THEN '2-4 tracks'
+                    WHEN a.total_tracks BETWEEN 5 AND 10 THEN '5-10 tracks'
+                    ELSE '10+ tracks'
+                END as album_size
+            FROM albums a
+            JOIN listening_events le ON a.album_id = le.album_id
+            WHERE a.total_tracks IS NOT NULL
+            GROUP BY a.album_id, a.total_tracks
+        )
+        SELECT album_size, COUNT(*) as fully_listened
+        FROM album_stats
+        WHERE listened_tracks = total_tracks
+        GROUP BY album_size
+        ORDER BY 
+            CASE album_size
+                WHEN '1 track' THEN 1
+                WHEN '2-4 tracks' THEN 2
+                WHEN '5-10 tracks' THEN 3
+                ELSE 4
+            END
+    """)
+    results = cur.fetchall()
+    print_section("How many entirely listened albums", 
+                  results, ["Length", "Number of entirely listened"])
+
+    #4.Artists with most number of listened albums
+    cur.execute("""
+        WITH album_stats AS (
+            SELECT 
+                a.album_id,
+                ar.artist_name,
+                a.total_tracks,
+                COUNT(DISTINCT le.track_id) as listened_tracks
+            FROM albums a
+            JOIN artists ar ON a.artist_id = ar.artist_id
+            JOIN listening_events le ON a.album_id = le.album_id
+            WHERE a.total_tracks IS NOT NULL AND a.total_tracks >= 3
+            GROUP BY a.album_id, a.total_tracks, ar.artist_name
+            HAVING COUNT(DISTINCT le.track_id) = a.total_tracks
+        )
+        SELECT artist_name, COUNT(*) as fully_listened_albums
+        FROM album_stats
+        GROUP BY artist_name
+        ORDER BY fully_listened_albums DESC
+        LIMIT 15
+    """)
+    results = cur.fetchall()
+    print_section("Top-15 artists with entirely listened albums", 
+                  results, ["Artist", "Entirely listened albums"])
+
+    #5. Albums without 1 track
+    cur.execute("""
+        WITH album_stats AS (
+            SELECT 
+                a.album_name,
+                ar.artist_name,
+                a.total_tracks,
+                COUNT(DISTINCT le.track_id) as listened_tracks
+            FROM albums a
+            JOIN artists ar ON a.artist_id = ar.artist_id
+            JOIN listening_events le ON a.album_id = le.album_id
+            WHERE a.total_tracks IS NOT NULL AND a.total_tracks >= 5
+            GROUP BY a.album_name, a.total_tracks, ar.artist_name
+        )
+        SELECT album_name, artist_name, total_tracks, listened_tracks
+        FROM album_stats
+        WHERE total_tracks - listened_tracks = 1
+        ORDER BY total_tracks DESC
+        LIMIT 20
+    """)
+    results = cur.fetchall()
+    print_section("Albums without 1 track (5+ tracks)", 
+                  results, ["Album", "Artist", "Total tracks", "Listened"])
+
+    cur.close()
+    conn.close()
+
+if __name__ == "__main__":
+    main()
