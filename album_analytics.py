@@ -156,6 +156,41 @@ def main():
     print_section("Albums without 1 track (5+ tracks)", 
                   results, ["Album", "Artist", "Total tracks", "Listened"])
 
+    #7.Top albums
+    cur.execute("""
+        WITH track_plays AS (
+            SELECT 
+                a.album_id,
+                a.album_name,
+                ar.artist_name,
+                le.track_id,
+                COUNT(*) as plays
+            FROM listening_events le
+            JOIN albums a ON le.album_id = a.album_id
+            JOIN artists ar ON a.artist_id = ar.artist_id
+            GROUP BY a.album_id, a.album_name, ar.artist_name, le.track_id
+        ),
+        album_min_plays AS (
+            SELECT 
+                album_id,
+                album_name,
+                artist_name,
+                MIN(plays) as min_track_plays,
+                COUNT(DISTINCT track_id) as tracks_in_album
+            FROM track_plays
+            WHERE plays > 0
+            GROUP BY album_id, album_name, artist_name
+        )
+        SELECT album_name, artist_name, min_track_plays, tracks_in_album
+        FROM album_min_plays
+        WHERE tracks_in_album >= 3
+        ORDER BY min_track_plays DESC
+        LIMIT 15
+    """)
+    results = cur.fetchall()
+    print_section("Top albums", 
+                results, ["Album", "Artist", "Listened", "Tracks"])
+
     cur.close()
     conn.close()
 
