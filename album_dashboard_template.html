@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fully listened albums in Spotify</title>
+<style>
+  :root {
+    --bg: #121212;
+    --panel: #181818;
+    --panel-hover: #232323;
+    --border: rgba(255,255,255,.09);
+    --text: #ffffff;
+    --muted: #b3b3b3;
+    --green: #1DB954;
+    --green-dim: rgba(29,185,84,.35);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  header {
+    padding: 18px 24px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 { margin: 0; font-size: 20px; letter-spacing: -.2px; }
+  header p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+  .chart-wrap { padding: 20px 24px 28px; overflow-x: auto; }
+  .chart { min-width: 780px; max-width: 1500px; margin: 0 auto; }
+
+  .dash-header-row {
+    display: flex;
+    align-items: stretch;
+    height: 230px;
+  }
+  .name-cell {
+    width: 210px;
+    min-width: 210px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 10px 0 6px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .dash-header-row .name-cell { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .5px; align-items: flex-start; padding-top: 10px; }
+  .years-cell { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+  .bars-row { flex: 1; display: flex; gap: 2px; padding: 0 4px; align-items: stretch; }
+  .bar-col {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    height: 100%;
+    padding-bottom: 2px;
+  }
+  .bar-top { flex: 1; width: 100%; }
+  .bar-value {
+    height: 16px;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--green);
+    line-height: 16px;
+  }
+  .bar-track {
+    position: relative;
+    width: 100%;
+    min-height: 2px;
+    border-radius: 3px 3px 0 0;
+    background: linear-gradient(180deg, rgba(29,185,84,.75), rgba(29,185,84,.25));
+    transition: opacity .15s, background .15s;
+  }
+  .bar-share {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 0;
+    background: var(--green);
+    border-radius: 3px 3px 0 0;
+    transition: height .15s, opacity .15s;
+    box-shadow: 0 0 10px rgba(29,185,84,.55);
+  }
+
+  body.hov .bar-col.hit .bar-track { opacity: 1; }
+  body.hov .bar-col.hit .bar-track .bar-value { color: var(--green); }
+  body.hov .bar-col:not(.hit) .bar-track { opacity: .14; }
+  body.hov .bar-col:not(.hit) .bar-value { color: rgba(255,255,255,.25); }
+  body.hov .bar-col.hit .year-label { color: var(--green); }
+  body.hov .bar-col:not(.hit) .year-label { color: rgba(255,255,255,.25); }
+
+  .year-labels { display: flex; gap: 2px; padding: 8px 4px 2px; }
+  .year-label {
+    flex: 1 1 0;
+    min-width: 0;
+    font-size: 10px;
+    color: var(--muted);
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  .artist-row {
+    display: flex;
+    align-items: center;
+    height: 28px;
+    border-radius: 6px;
+    transition: background .15s;
+  }
+  .artist-row:hover, .artist-row.active { background: var(--panel-hover); cursor: default; }
+  .artist-row .name-cell { height: 100%; }
+  .artist-row .nm {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .artist-row.active .nm { white-space: normal; overflow: visible; }
+  .artist-row .tot {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .artist-row.active .tot { color: var(--green); }
+
+  .dots-row { flex: 1; min-width: 0; display: flex; gap: 2px; padding: 0 4px; align-items: center; height: 100%; }
+  .dot-cell {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .dot-cell svg { display: block; }
+  .dot-cell circle {
+    fill: var(--green);
+    opacity: .65;
+    transition: opacity .15s;
+  }
+  .artist-row.active .dot-cell circle,
+  body.hov .artist-row.active .dot-cell circle { opacity: 1; }
+  body.hov .artist-row:not(.active) .dot-cell circle { opacity: .18; }
+
+  .legend {
+    margin: 16px 0 0;
+    font-size: 12px;
+    color: var(--muted);
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+  .legend .chip { display: inline-flex; align-items: center; gap: 7px; }
+  .legend .swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  .legend .dot-swatch { width: 12px; height: 12px; border-radius: 50%; display: inline-block; background: var(--green); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Fully listened albums in Spotify</h1>
+  <p>Top: full album plays by the album's release year. Below: artists sorted by total plays, dots show their plays in each year (shared year axis). Hover an artist to see their share inside the bars.</p>
+</header>
+<div class="chart-wrap">
+  <div class="chart" id="chart"></div>
+  <div class="legend">
+    <div class="chip"><span class="swatch" style="background:var(--green)"></span> full album plays by year</div>
+    <div class="chip"><span class="dot-swatch"></span> artist plays in year</div>
+  </div>
+</div>
+
+<script>
+const D = __DATA__;
+const SVGNS = 'http://www.w3.org/2000/svg';
+const BAR_H = 230;
+const HEADER_SPACER = 10;
+const VALUE_H = 16;
+
+const chart = document.getElementById('chart');
+const years = D.years;
+const totals = D.plays_by_year;
+const maxTotal = Math.max(...years.map(y => totals[y] || 0));
+const usefulH = BAR_H - HEADER_SPACER - VALUE_H;
+
+// ---------- header row ----------
+const headerRow = document.createElement('div');
+headerRow.className = 'dash-header-row';
+
+const headName = document.createElement('div');
+headName.className = 'name-cell';
+headName.textContent = 'Artists';
+headerRow.appendChild(headName);
+
+const headerYears = document.createElement('div');
+headerYears.className = 'years-cell';
+
+const barsRow = document.createElement('div');
+barsRow.className = 'bars-row';
+
+const barCols = [];
+years.forEach(y => {
+  const col = document.createElement('div');
+  col.className = 'bar-col';
+  const top = document.createElement('div');
+  top.className = 'bar-top';
+  const val = document.createElement('div');
+  val.className = 'bar-value';
+  val.textContent = totals[y] ? totals[y] : '';
+  const track = document.createElement('div');
+  track.className = 'bar-track';
+  const h = totals[y] ? Math.max((totals[y] / maxTotal) * usefulH, 3) : 0;
+  track.style.height = h + 'px';
+  const share = document.createElement('div');
+  share.className = 'bar-share';
+  share.dataset.year = y;
+  track.appendChild(share);
+  col.appendChild(top);
+  col.appendChild(val);
+  col.appendChild(track);
+  barsRow.appendChild(col);
+  barCols.push({ col, val, track, share, year: y });
+});
+
+const labelsRow = document.createElement('div');
+labelsRow.className = 'year-labels';
+years.forEach(y => {
+  const lbl = document.createElement('div');
+  lbl.className = 'year-label';
+  lbl.textContent = y;
+  labelsRow.appendChild(lbl);
+});
+
+headerYears.appendChild(barsRow);
+headerYears.appendChild(labelsRow);
+headerRow.appendChild(headerYears);
+chart.appendChild(headerRow);
+
+// ---------- artists ----------
+const artistsBox = document.createElement('div');
+artistsBox.id = 'artistsBox';
+chart.appendChild(artistsBox);
+
+function makeArtistRow(a) {
+  const row = document.createElement('div');
+  row.className = 'artist-row';
+  row.dataset.artist = a;
+
+  const nameCell = document.createElement('div');
+  nameCell.className = 'name-cell';
+  const nm = document.createElement('span');
+  nm.className = 'nm';
+  nm.textContent = a;
+  const tot = document.createElement('span');
+  tot.className = 'tot';
+  tot.textContent = D.artist_totals[a];
+  nameCell.appendChild(nm);
+  nameCell.appendChild(tot);
+
+  const dotsRow = document.createElement('div');
+  dotsRow.className = 'dots-row';
+
+  const ay = D.artist_year[a] || {};
+  const maxA = Math.max(...Object.values(ay), 1);
+
+  years.forEach(y => {
+    const cell = document.createElement('div');
+    cell.className = 'dot-cell';
+    const svg = document.createElementNS(SVGNS, 'svg');
+    const v = ay[y] || 0;
+    const r = v ? Math.max(3, (v / maxA) * 8) : 0;
+    svg.setAttribute('width', '16');
+    svg.setAttribute('height', '16');
+    const c = document.createElementNS(SVGNS, 'circle');
+    c.setAttribute('cx', '8');
+    c.setAttribute('cy', '8');
+    c.setAttribute('r', r);
+    if (v) c.setAttribute('title', a + ' — ' + y + ': ' + v + ' full album plays');
+    svg.appendChild(c);
+    cell.appendChild(svg);
+    dotsRow.appendChild(cell);
+  });
+
+  row.appendChild(nameCell);
+  row.appendChild(dotsRow);
+  return row;
+}
+
+const rows = D.artists.map(makeArtistRow);
+rows.forEach(r => artistsBox.appendChild(r));
+
+// ---------- hover logic ----------
+function clearHighlight() {
+  document.body.classList.remove('hov');
+  document.querySelectorAll('.artist-row.active').forEach(r => r.classList.remove('active'));
+  barCols.forEach(({ track, share }) => {
+    track.classList.remove('hit');
+    share.style.height = '0px';
+  });
+}
+
+function highlight(a) {
+  clearHighlight();
+  document.body.classList.add('hov');
+  const ay = D.artist_year[a] || {};
+  rows.forEach(r => r.classList.toggle('active', r.dataset.artist === a));
+
+  barCols.forEach(({ col, track, share, year: y }) => {
+    const total = totals[y] || 0;
+    const v = ay[y] || 0;
+    if (v && total) {
+      col.classList.add('hit');
+      const trackH = track.getBoundingClientRect().height;
+      const seg = (v / total) * trackH;
+      share.style.height = Math.round(seg) + 'px';
+      share.setAttribute('title', a + ': ' + v + ' (' + Math.round((v / total) * 100) + '% of the year)');
+    } else {
+      col.classList.remove('hit');
+      share.style.height = '0px';
+    }
+  });
+}
+
+rows.forEach(r => {
+  r.addEventListener('mouseenter', () => highlight(r.dataset.artist));
+});
+
+artistsBox.addEventListener('mouseleave', clearHighlight);
+</script>
+</body>
+</html>

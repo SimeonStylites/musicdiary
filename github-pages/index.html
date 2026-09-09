@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fully listened albums in Spotify</title>
+<style>
+  :root {
+    --bg: #121212;
+    --panel: #181818;
+    --panel-hover: #232323;
+    --border: rgba(255,255,255,.09);
+    --text: #ffffff;
+    --muted: #b3b3b3;
+    --green: #1DB954;
+    --green-dim: rgba(29,185,84,.35);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  header {
+    padding: 18px 24px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 { margin: 0; font-size: 20px; letter-spacing: -.2px; }
+  header p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+  .chart-wrap { padding: 20px 24px 28px; overflow-x: auto; }
+  .chart { min-width: 780px; max-width: 1500px; margin: 0 auto; }
+
+  .dash-header-row {
+    display: flex;
+    align-items: stretch;
+    height: 230px;
+  }
+  .name-cell {
+    width: 210px;
+    min-width: 210px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 10px 0 6px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .dash-header-row .name-cell { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .5px; align-items: flex-start; padding-top: 10px; }
+  .years-cell { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+  .bars-row { flex: 1; display: flex; gap: 2px; padding: 0 4px; align-items: stretch; }
+  .bar-col {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    height: 100%;
+    padding-bottom: 2px;
+  }
+  .bar-top { flex: 1; width: 100%; }
+  .bar-value {
+    height: 16px;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--green);
+    line-height: 16px;
+  }
+  .bar-track {
+    position: relative;
+    width: 100%;
+    min-height: 2px;
+    border-radius: 3px 3px 0 0;
+    background: linear-gradient(180deg, rgba(29,185,84,.75), rgba(29,185,84,.25));
+    transition: opacity .15s, background .15s;
+  }
+  .bar-share {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 0;
+    background: var(--green);
+    border-radius: 3px 3px 0 0;
+    transition: height .15s, opacity .15s;
+    box-shadow: 0 0 10px rgba(29,185,84,.55);
+  }
+
+  body.hov .bar-col.hit .bar-track { opacity: 1; }
+  body.hov .bar-col.hit .bar-track .bar-value { color: var(--green); }
+  body.hov .bar-col:not(.hit) .bar-track { opacity: .14; }
+  body.hov .bar-col:not(.hit) .bar-value { color: rgba(255,255,255,.25); }
+  body.hov .bar-col.hit .year-label { color: var(--green); }
+  body.hov .bar-col:not(.hit) .year-label { color: rgba(255,255,255,.25); }
+
+  .year-labels { display: flex; gap: 2px; padding: 8px 4px 2px; }
+  .year-label {
+    flex: 1 1 0;
+    min-width: 0;
+    font-size: 10px;
+    color: var(--muted);
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  .artist-row {
+    display: flex;
+    align-items: center;
+    height: 28px;
+    border-radius: 6px;
+    transition: background .15s;
+  }
+  .artist-row:hover, .artist-row.active { background: var(--panel-hover); cursor: default; }
+  .artist-row .name-cell { height: 100%; }
+  .artist-row .nm {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .artist-row.active .nm { white-space: normal; overflow: visible; }
+  .artist-row .tot {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .artist-row.active .tot { color: var(--green); }
+
+  .dots-row { flex: 1; min-width: 0; display: flex; gap: 2px; padding: 0 4px; align-items: center; height: 100%; }
+  .dot-cell {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .dot-cell svg { display: block; }
+  .dot-cell circle {
+    fill: var(--green);
+    opacity: .65;
+    transition: opacity .15s;
+  }
+  .artist-row.active .dot-cell circle,
+  body.hov .artist-row.active .dot-cell circle { opacity: 1; }
+  body.hov .artist-row:not(.active) .dot-cell circle { opacity: .18; }
+
+  .legend {
+    margin: 16px 0 0;
+    font-size: 12px;
+    color: var(--muted);
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+  .legend .chip { display: inline-flex; align-items: center; gap: 7px; }
+  .legend .swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  .legend .dot-swatch { width: 12px; height: 12px; border-radius: 50%; display: inline-block; background: var(--green); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Fully listened albums in Spotify</h1>
+  <p>Top: full album plays by the album's release year. Below: artists sorted by total plays, dots show their plays in each year (shared year axis). Hover an artist to see their share inside the bars.</p>
+</header>
+<div class="chart-wrap">
+  <div class="chart" id="chart"></div>
+  <div class="legend">
+    <div class="chip"><span class="swatch" style="background:var(--green)"></span> full album plays by year</div>
+    <div class="chip"><span class="dot-swatch"></span> artist plays in year</div>
+  </div>
+</div>
+
+<script>
+const D = {"years": [1954, 1958, 1959, 1963, 1968, 1969, 1971, 1972, 1973, 1975, 1976, 1977, 1978, 1979, 1981, 1984, 1985, 1986, 1987, 1989, 1990, 1992, 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026], "plays_by_year": {"1954": 1, "1958": 6, "1959": 4, "1963": 1, "1968": 2, "1969": 5, "1971": 1, "1972": 2, "1973": 8, "1975": 5, "1976": 2, "1977": 1, "1978": 1, "1979": 2, "1981": 2, "1984": 7, "1985": 2, "1986": 2, "1987": 5, "1989": 4, "1990": 2, "1992": 1, "1993": 1, "1994": 6, "1995": 1, "1996": 6, "1997": 2, "1998": 3, "1999": 1, "2000": 6, "2001": 9, "2002": 2, "2003": 2, "2004": 10, "2005": 6, "2006": 6, "2008": 5, "2009": 2, "2010": 4, "2011": 1, "2012": 2, "2013": 16, "2014": 15, "2015": 6, "2016": 5, "2017": 6, "2018": 6, "2019": 3, "2020": 2, "2021": 3, "2022": 21, "2023": 6, "2024": 27, "2025": 2, "2026": 6}, "artists": ["Charli xcx", "Jai Paul", "Bruce Springsteen", "ROSALÍA", "Frankie Cosmos", "Neil Young", "Золотые зубы", "Black Country, New Road", "Cannonball Adderley", "Arcade Fire", "TOOL", "Tycho", "Beyoncé", "Caroline Polachek", "Daft Punk", "Grizzly Bear", "Jenny Hval", "King Gizzard & The Lizard Wizard", "King Krule", "Led Zeppelin", "Mastodon", "Paul Simon", "Pink Floyd", "Portishead", "The Strokes", "Agent Steel", "Antony and the Johnsons", "Arctic Monkeys", "Belle and Sebastian", "Boards of Canada", "Courtney Barnett", "Fiona Apple", "Four Tet", "Hot Chip", "Jaco Pastorius", "Jethro Tull", "Kanye West", "Nina Simone", "No Age", "Ornette Coleman", "Prince", "Radiohead", "Röyksopp", "Supertramp", "The Clientele", "The Zombies", "Tom Petty", "Tom Waits", "Vampire Weekend", "Waylon Jennings", "Weyes Blood", "Wolf Parade", "Aerosmith", "Allman Brothers Band", "Alvvays", "Angel Olsen", "Aphex Twin", "Aquarium", "Ariana Grande", "Beck", "Big Thief", "Bob Dylan", "Bonobo", "Burzum", "Cameron Winter", "Cardi B", "Carole King", "Dawn McCarthy", "Def Leppard", "Dirty Projectors", "Dizzy Gillespie", "Drake", "Enslaved", "Floating Points", "Frank Ocean", "GAS", "Gojira", "Jeff Rosenstock", "Judas Priest", "Junior Boys", "Kacey Musgraves", "Kendrick Lamar", "KIDS SEE GHOSTS", "King's X", "Krovostok", "Kyuss", "Larkin Poe", "Luomo", "Massive Attack", "Mercyful Fate", "Metallica", "Nick Cave & The Bad Seeds", "Poshlaya Molly", "Rihanna", "Robyn", "Rush", "SAULT", "Snail Mail", "Solange", "Spoon", "Sungazer", "Symphony X", "SZA", "The Microphones", "The National", "The New Pornographers", "The Rolling Stones", "The Smashing Pumpkins", "The Velvet Underground", "The White Stripes", "Tom Petty and the Heartbreakers", "U2", "Voivod", "Wednesday", "Weezer", "Мираж", "Наум Блик", "Птицу ЕМЪ"], "artist_year": {"Charli xcx": {"2017": 1, "2020": 1, "2024": 23, "2026": 3}, "Jai Paul": {"2013": 14}, "Bruce Springsteen": {"1973": 1, "1975": 4, "1984": 2, "1987": 4}, "ROSALÍA": {"2018": 1, "2022": 6, "2025": 1}, "Frankie Cosmos": {"2014": 7}, "Neil Young": {"1975": 1, "1990": 2, "1992": 1, "2021": 3}, "Золотые зубы": {"2022": 5, "2026": 2}, "Black Country, New Road": {"2022": 6}, "Cannonball Adderley": {"1958": 6}, "Arcade Fire": {"2004": 4}, "TOOL": {"1996": 3, "2001": 1}, "Tycho": {"2014": 3, "2016": 1}, "Beyoncé": {"2014": 1, "2022": 2}, "Caroline Polachek": {"2023": 3}, "Daft Punk": {"2001": 2, "2010": 1}, "Grizzly Bear": {"2006": 2, "2009": 1}, "Jenny Hval": {"2015": 3}, "King Gizzard & The Lizard Wizard": {"2017": 1, "2023": 2}, "King Krule": {"2017": 2, "2024": 1}, "Led Zeppelin": {"1969": 3}, "Mastodon": {"2004": 3}, "Paul Simon": {"1972": 1, "1986": 2}, "Pink Floyd": {"1973": 3}, "Portishead": {"1994": 3}, "The Strokes": {"2001": 3}, "Agent Steel": {"1985": 2}, "Antony and the Johnsons": {"2005": 2}, "Arctic Monkeys": {"2006": 2}, "Belle and Sebastian": {"1996": 2}, "Boards of Canada": {"1998": 2}, "Courtney Barnett": {"2015": 2}, "Fiona Apple": {"2012": 1, "2020": 1}, "Four Tet": {"2003": 2}, "Hot Chip": {"2006": 2}, "Jaco Pastorius": {"1976": 2}, "Jethro Tull": {"1977": 1, "2018": 1}, "Kanye West": {"2013": 1, "2026": 1}, "Nina Simone": {"1959": 2}, "No Age": {"2008": 2}, "Ornette Coleman": {"1959": 2}, "Prince": {"1984": 2}, "Radiohead": {"1995": 1, "2000": 1}, "Röyksopp": {"2001": 2}, "Supertramp": {"1979": 2}, "The Clientele": {"2000": 2}, "The Zombies": {"1968": 2}, "Tom Petty": {"1989": 1, "1994": 1}, "Tom Waits": {"1973": 2}, "Vampire Weekend": {"2008": 2}, "Waylon Jennings": {"1973": 2}, "Weyes Blood": {"2014": 1, "2019": 1}, "Wolf Parade": {"2005": 2}, "Aerosmith": {"1989": 1}, "Allman Brothers Band": {"1972": 1}, "Alvvays": {"2014": 1}, "Angel Olsen": {"2014": 1}, "Aphex Twin": {"2014": 1}, "Aquarium": {"2008": 1}, "Ariana Grande": {"2024": 1}, "Beck": {"2002": 1}, "Big Thief": {"2022": 1}, "Bob Dylan": {"1963": 1}, "Bonobo": {"2010": 1}, "Burzum": {"1994": 1}, "Cameron Winter": {"2024": 1}, "Cardi B": {"2018": 1}, "Carole King": {"1971": 1}, "Dawn McCarthy": {"2013": 1}, "Def Leppard": {"1987": 1}, "Dirty Projectors": {"2009": 1}, "Dizzy Gillespie": {"1954": 1}, "Drake": {"2011": 1}, "Enslaved": {"2004": 1}, "Floating Points": {"2019": 1}, "Frank Ocean": {"2016": 1}, "GAS": {"2000": 1}, "Gojira": {"2016": 1}, "Jeff Rosenstock": {"2023": 1}, "Judas Priest": {"1978": 1}, "Junior Boys": {"2004": 1}, "Kacey Musgraves": {"2018": 1}, "Kendrick Lamar": {"2015": 1}, "KIDS SEE GHOSTS": {"2018": 1}, "King's X": {"1989": 1}, "Krovostok": {"2004": 1}, "Kyuss": {"1994": 1}, "Larkin Poe": {"2022": 1}, "Luomo": {"2005": 1}, "Massive Attack": {"1998": 1}, "Mercyful Fate": {"1984": 1}, "Metallica": {"1984": 1}, "Nick Cave & The Bad Seeds": {"1984": 1}, "Poshlaya Molly": {"2017": 1}, "Rihanna": {"2016": 1}, "Robyn": {"2010": 1}, "Rush": {"1981": 1}, "SAULT": {"2019": 1}, "Snail Mail": {"2018": 1}, "Solange": {"2016": 1}, "Spoon": {"2002": 1}, "Sungazer": {"2024": 1}, "Symphony X": {"1997": 1}, "SZA": {"2017": 1}, "The Microphones": {"2001": 1}, "The National": {"2005": 1}, "The New Pornographers": {"2000": 1}, "The Rolling Stones": {"1969": 1}, "The Smashing Pumpkins": {"1993": 1}, "The Velvet Underground": {"1969": 1}, "The White Stripes": {"1999": 1}, "Tom Petty and the Heartbreakers": {"1981": 1}, "U2": {"2000": 1}, "Voivod": {"1989": 1}, "Wednesday": {"2025": 1}, "Weezer": {"1996": 1}, "Мираж": {"1997": 1}, "Наум Блик": {"2010": 1}, "Птицу ЕМЪ": {"2012": 1}}, "artist_totals": {"Charli xcx": 28, "Jai Paul": 14, "Bruce Springsteen": 11, "ROSALÍA": 8, "Frankie Cosmos": 7, "Neil Young": 7, "Золотые зубы": 7, "Black Country, New Road": 6, "Cannonball Adderley": 6, "Arcade Fire": 4, "TOOL": 4, "Tycho": 4, "Beyoncé": 3, "Caroline Polachek": 3, "Daft Punk": 3, "Grizzly Bear": 3, "Jenny Hval": 3, "King Gizzard & The Lizard Wizard": 3, "King Krule": 3, "Led Zeppelin": 3, "Mastodon": 3, "Paul Simon": 3, "Pink Floyd": 3, "Portishead": 3, "The Strokes": 3, "Agent Steel": 2, "Antony and the Johnsons": 2, "Arctic Monkeys": 2, "Belle and Sebastian": 2, "Boards of Canada": 2, "Courtney Barnett": 2, "Fiona Apple": 2, "Four Tet": 2, "Hot Chip": 2, "Jaco Pastorius": 2, "Jethro Tull": 2, "Kanye West": 2, "Nina Simone": 2, "No Age": 2, "Ornette Coleman": 2, "Prince": 2, "Radiohead": 2, "Röyksopp": 2, "Supertramp": 2, "The Clientele": 2, "The Zombies": 2, "Tom Petty": 2, "Tom Waits": 2, "Vampire Weekend": 2, "Waylon Jennings": 2, "Weyes Blood": 2, "Wolf Parade": 2, "Aerosmith": 1, "Allman Brothers Band": 1, "Alvvays": 1, "Angel Olsen": 1, "Aphex Twin": 1, "Aquarium": 1, "Ariana Grande": 1, "Beck": 1, "Big Thief": 1, "Bob Dylan": 1, "Bonobo": 1, "Burzum": 1, "Cameron Winter": 1, "Cardi B": 1, "Carole King": 1, "Dawn McCarthy": 1, "Def Leppard": 1, "Dirty Projectors": 1, "Dizzy Gillespie": 1, "Drake": 1, "Enslaved": 1, "Floating Points": 1, "Frank Ocean": 1, "GAS": 1, "Gojira": 1, "Jeff Rosenstock": 1, "Judas Priest": 1, "Junior Boys": 1, "Kacey Musgraves": 1, "Kendrick Lamar": 1, "KIDS SEE GHOSTS": 1, "King's X": 1, "Krovostok": 1, "Kyuss": 1, "Larkin Poe": 1, "Luomo": 1, "Massive Attack": 1, "Mercyful Fate": 1, "Metallica": 1, "Nick Cave & The Bad Seeds": 1, "Poshlaya Molly": 1, "Rihanna": 1, "Robyn": 1, "Rush": 1, "SAULT": 1, "Snail Mail": 1, "Solange": 1, "Spoon": 1, "Sungazer": 1, "Symphony X": 1, "SZA": 1, "The Microphones": 1, "The National": 1, "The New Pornographers": 1, "The Rolling Stones": 1, "The Smashing Pumpkins": 1, "The Velvet Underground": 1, "The White Stripes": 1, "Tom Petty and the Heartbreakers": 1, "U2": 1, "Voivod": 1, "Wednesday": 1, "Weezer": 1, "Мираж": 1, "Наум Блик": 1, "Птицу ЕМЪ": 1}};
+const SVGNS = 'http://www.w3.org/2000/svg';
+const BAR_H = 230;
+const HEADER_SPACER = 10;
+const VALUE_H = 16;
+
+const chart = document.getElementById('chart');
+const years = D.years;
+const totals = D.plays_by_year;
+const maxTotal = Math.max(...years.map(y => totals[y] || 0));
+const usefulH = BAR_H - HEADER_SPACER - VALUE_H;
+
+// ---------- header row ----------
+const headerRow = document.createElement('div');
+headerRow.className = 'dash-header-row';
+
+const headName = document.createElement('div');
+headName.className = 'name-cell';
+headName.textContent = 'Artists';
+headerRow.appendChild(headName);
+
+const headerYears = document.createElement('div');
+headerYears.className = 'years-cell';
+
+const barsRow = document.createElement('div');
+barsRow.className = 'bars-row';
+
+const barCols = [];
+years.forEach(y => {
+  const col = document.createElement('div');
+  col.className = 'bar-col';
+  const top = document.createElement('div');
+  top.className = 'bar-top';
+  const val = document.createElement('div');
+  val.className = 'bar-value';
+  val.textContent = totals[y] ? totals[y] : '';
+  const track = document.createElement('div');
+  track.className = 'bar-track';
+  const h = totals[y] ? Math.max((totals[y] / maxTotal) * usefulH, 3) : 0;
+  track.style.height = h + 'px';
+  const share = document.createElement('div');
+  share.className = 'bar-share';
+  share.dataset.year = y;
+  track.appendChild(share);
+  col.appendChild(top);
+  col.appendChild(val);
+  col.appendChild(track);
+  barsRow.appendChild(col);
+  barCols.push({ col, val, track, share, year: y });
+});
+
+const labelsRow = document.createElement('div');
+labelsRow.className = 'year-labels';
+years.forEach(y => {
+  const lbl = document.createElement('div');
+  lbl.className = 'year-label';
+  lbl.textContent = y;
+  labelsRow.appendChild(lbl);
+});
+
+headerYears.appendChild(barsRow);
+headerYears.appendChild(labelsRow);
+headerRow.appendChild(headerYears);
+chart.appendChild(headerRow);
+
+// ---------- artists ----------
+const artistsBox = document.createElement('div');
+artistsBox.id = 'artistsBox';
+chart.appendChild(artistsBox);
+
+function makeArtistRow(a) {
+  const row = document.createElement('div');
+  row.className = 'artist-row';
+  row.dataset.artist = a;
+
+  const nameCell = document.createElement('div');
+  nameCell.className = 'name-cell';
+  const nm = document.createElement('span');
+  nm.className = 'nm';
+  nm.textContent = a;
+  const tot = document.createElement('span');
+  tot.className = 'tot';
+  tot.textContent = D.artist_totals[a];
+  nameCell.appendChild(nm);
+  nameCell.appendChild(tot);
+
+  const dotsRow = document.createElement('div');
+  dotsRow.className = 'dots-row';
+
+  const ay = D.artist_year[a] || {};
+  const maxA = Math.max(...Object.values(ay), 1);
+
+  years.forEach(y => {
+    const cell = document.createElement('div');
+    cell.className = 'dot-cell';
+    const svg = document.createElementNS(SVGNS, 'svg');
+    const v = ay[y] || 0;
+    const r = v ? Math.max(3, (v / maxA) * 8) : 0;
+    svg.setAttribute('width', '16');
+    svg.setAttribute('height', '16');
+    const c = document.createElementNS(SVGNS, 'circle');
+    c.setAttribute('cx', '8');
+    c.setAttribute('cy', '8');
+    c.setAttribute('r', r);
+    if (v) c.setAttribute('title', a + ' — ' + y + ': ' + v + ' full album plays');
+    svg.appendChild(c);
+    cell.appendChild(svg);
+    dotsRow.appendChild(cell);
+  });
+
+  row.appendChild(nameCell);
+  row.appendChild(dotsRow);
+  return row;
+}
+
+const rows = D.artists.map(makeArtistRow);
+rows.forEach(r => artistsBox.appendChild(r));
+
+// ---------- hover logic ----------
+function clearHighlight() {
+  document.body.classList.remove('hov');
+  document.querySelectorAll('.artist-row.active').forEach(r => r.classList.remove('active'));
+  barCols.forEach(({ track, share }) => {
+    track.classList.remove('hit');
+    share.style.height = '0px';
+  });
+}
+
+function highlight(a) {
+  clearHighlight();
+  document.body.classList.add('hov');
+  const ay = D.artist_year[a] || {};
+  rows.forEach(r => r.classList.toggle('active', r.dataset.artist === a));
+
+  barCols.forEach(({ col, track, share, year: y }) => {
+    const total = totals[y] || 0;
+    const v = ay[y] || 0;
+    if (v && total) {
+      col.classList.add('hit');
+      const trackH = track.getBoundingClientRect().height;
+      const seg = (v / total) * trackH;
+      share.style.height = Math.round(seg) + 'px';
+      share.setAttribute('title', a + ': ' + v + ' (' + Math.round((v / total) * 100) + '% of the year)');
+    } else {
+      col.classList.remove('hit');
+      share.style.height = '0px';
+    }
+  });
+}
+
+rows.forEach(r => {
+  r.addEventListener('mouseenter', () => highlight(r.dataset.artist));
+});
+
+artistsBox.addEventListener('mouseleave', clearHighlight);
+</script>
+</body>
+</html>
