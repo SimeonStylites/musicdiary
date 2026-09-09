@@ -29,13 +29,21 @@
   }
   header h1 { margin: 0; font-size: 20px; letter-spacing: -.2px; }
   header p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
-  .chart-wrap { padding: 20px 24px 28px; overflow-x: auto; }
+  .chart-wrap {
+    padding: 16px 24px 28px;
+    overflow: auto;
+    height: calc(100vh - 100px);
+  }
   .chart { min-width: 780px; max-width: 1500px; margin: 0 auto; }
 
   .dash-header-row {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: var(--bg);
     display: flex;
     align-items: stretch;
-    height: 230px;
+    border-bottom: 1px solid var(--border);
   }
   .name-cell {
     width: 210px;
@@ -50,7 +58,7 @@
   .dash-header-row .name-cell { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .5px; align-items: flex-start; padding-top: 10px; }
   .years-cell { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 
-  .bars-row { flex: 1; display: flex; gap: 2px; padding: 0 4px; align-items: stretch; }
+  .bars-row { height: 220px; display: flex; gap: 2px; padding: 0 4px; align-items: stretch; }
   .bar-col {
     flex: 1 1 0;
     min-width: 0;
@@ -61,7 +69,6 @@
     height: 100%;
     padding-bottom: 2px;
   }
-  .bar-top { flex: 1; width: 100%; }
   .bar-value {
     height: 16px;
     font-size: 10px;
@@ -87,6 +94,7 @@
     border-radius: 3px 3px 0 0;
     transition: height .15s, opacity .15s;
     box-shadow: 0 0 10px rgba(29,185,84,.55);
+    cursor: help;
   }
 
   body.hov .bar-col.hit .bar-track { opacity: 1; }
@@ -96,7 +104,7 @@
   body.hov .bar-col.hit .year-label { color: var(--green); }
   body.hov .bar-col:not(.hit) .year-label { color: rgba(255,255,255,.25); }
 
-  .year-labels { display: flex; gap: 2px; padding: 8px 4px 2px; }
+  .year-labels { display: flex; gap: 2px; padding: 8px 4px 36px; }
   .year-label {
     flex: 1 1 0;
     min-width: 0;
@@ -160,12 +168,32 @@
   .legend .chip { display: inline-flex; align-items: center; gap: 7px; }
   .legend .swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
   .legend .dot-swatch { width: 12px; height: 12px; border-radius: 50%; display: inline-block; background: var(--green); }
+
+  .tooltip {
+    position: fixed;
+    z-index: 100;
+    display: none;
+    min-width: 180px;
+    max-width: 340px;
+    background: #282828;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.6);
+    pointer-events: none;
+  }
+  .tooltip .tt-artist { font-weight: 700; font-size: 13px; margin-bottom: 2px; }
+  .tooltip .tt-year { color: var(--muted); font-size: 11px; margin-bottom: 6px; }
+  .tooltip .tt-list { display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
+  .tooltip .tt-album { display: flex; justify-content: space-between; gap: 12px; }
+  .tooltip .tt-name { color: var(--text); }
+  .tooltip .tt-plays { color: var(--green); font-variant-numeric: tabular-nums; }
 </style>
 </head>
 <body>
 <header>
   <h1>Fully listened albums in Spotify</h1>
-  <p>Top: full album plays by the album's release year. Below: artists sorted by total plays, dots show their plays in each year (shared year axis). Hover an artist to see their share inside the bars.</p>
+  <p>Top: full album plays by the album's release year. Below: artists sorted by total plays, dots show their plays in each year (shared year axis). Hover an artist or a dot to see the albums and the artist's share in the bars. Scroll the artist list — the bars stay on top.</p>
 </header>
 <div class="chart-wrap">
   <div class="chart" id="chart"></div>
@@ -174,19 +202,66 @@
     <div class="chip"><span class="dot-swatch"></span> artist plays in year</div>
   </div>
 </div>
+<div class="tooltip" id="tooltip"></div>
 
 <script>
 const D = __DATA__;
 const SVGNS = 'http://www.w3.org/2000/svg';
-const BAR_H = 230;
-const HEADER_SPACER = 10;
+const BAR_H = 220;
 const VALUE_H = 16;
+const USEFUL_H = BAR_H - VALUE_H - 4;
 
 const chart = document.getElementById('chart');
+const tooltip = document.getElementById('tooltip');
+const tipData = new Map();
+const shareTip = new Map();
 const years = D.years;
 const totals = D.plays_by_year;
 const maxTotal = Math.max(...years.map(y => totals[y] || 0));
-const usefulH = BAR_H - HEADER_SPACER - VALUE_H;
+
+function buildTooltip(a, y, plays, albums) {
+  tooltip.innerHTML = '';
+  const tArtist = document.createElement('div');
+  tArtist.className = 'tt-artist';
+  tArtist.textContent = a;
+  const tYear = document.createElement('div');
+  tYear.className = 'tt-year';
+  tYear.textContent = y + ' — ' + plays + ' full album plays';
+  tooltip.appendChild(tArtist);
+  tooltip.appendChild(tYear);
+  const list = document.createElement('div');
+  list.className = 'tt-list';
+  albums.forEach(al => {
+    const row = document.createElement('div');
+    row.className = 'tt-album';
+    const nm = document.createElement('span');
+    nm.className = 'tt-name';
+    nm.textContent = al.name;
+    const pl = document.createElement('span');
+    pl.className = 'tt-plays';
+    pl.textContent = 'x' + al.plays;
+    row.appendChild(nm);
+    row.appendChild(pl);
+    list.appendChild(row);
+  });
+  tooltip.appendChild(list);
+}
+
+function moveTip(e) {
+  const w = tooltip.offsetWidth;
+  let x = e.clientX + 16;
+  if (x + w > window.innerWidth - 8) x = e.clientX - w - 16;
+  tooltip.style.left = x + 'px';
+  tooltip.style.top = (e.clientY + 14) + 'px';
+}
+
+function showTip(e, a, y, plays, albums) {
+  buildTooltip(a, y, plays, albums);
+  tooltip.style.display = 'block';
+  moveTip(e);
+}
+
+function hideTip() { tooltip.style.display = 'none'; }
 
 // ---------- header row ----------
 const headerRow = document.createElement('div');
@@ -207,20 +282,24 @@ const barCols = [];
 years.forEach(y => {
   const col = document.createElement('div');
   col.className = 'bar-col';
-  const top = document.createElement('div');
-  top.className = 'bar-top';
   const val = document.createElement('div');
   val.className = 'bar-value';
   val.textContent = totals[y] ? totals[y] : '';
   const track = document.createElement('div');
   track.className = 'bar-track';
-  const h = totals[y] ? Math.max((totals[y] / maxTotal) * usefulH, 3) : 0;
+  const h = totals[y] ? Math.max((totals[y] / maxTotal) * USEFUL_H, 3) : 0;
   track.style.height = h + 'px';
   const share = document.createElement('div');
   share.className = 'bar-share';
   share.dataset.year = y;
   track.appendChild(share);
-  col.appendChild(top);
+  share.addEventListener('mouseenter', (e) => {
+    const t = shareTip.get(share);
+    if (t) showTip(e, t.artist, t.year, t.plays, t.albums);
+  });
+  share.addEventListener('mousemove', moveTip);
+  share.addEventListener('mouseleave', hideTip);
+  col.appendChild(val);
   col.appendChild(val);
   col.appendChild(track);
   barsRow.appendChild(col);
@@ -280,8 +359,20 @@ function makeArtistRow(a) {
     c.setAttribute('cx', '8');
     c.setAttribute('cy', '8');
     c.setAttribute('r', r);
-    if (v) c.setAttribute('title', a + ' — ' + y + ': ' + v + ' full album plays');
     svg.appendChild(c);
+    if (v) {
+      const albums = (D.artist_year_albums[a] || {})[y] || [];
+      tipData.set(svg, { artist: a, year: y, plays: v, albums });
+      svg.dataset.artist = a;
+      svg.dataset.year = y;
+      svg.style.cursor = 'help';
+      svg.addEventListener('mouseenter', (e) => {
+        const t = tipData.get(svg);
+        if (t) showTip(e, t.artist, t.year, t.plays, t.albums);
+      });
+      svg.addEventListener('mousemove', moveTip);
+      svg.addEventListener('mouseleave', hideTip);
+    }
     cell.appendChild(svg);
     dotsRow.appendChild(cell);
   });
@@ -296,11 +387,13 @@ rows.forEach(r => artistsBox.appendChild(r));
 
 // ---------- hover logic ----------
 function clearHighlight() {
+  hideTip();
   document.body.classList.remove('hov');
   document.querySelectorAll('.artist-row.active').forEach(r => r.classList.remove('active'));
   barCols.forEach(({ track, share }) => {
     track.classList.remove('hit');
     share.style.height = '0px';
+    shareTip.delete(share);
   });
 }
 
@@ -318,10 +411,16 @@ function highlight(a) {
       const trackH = track.getBoundingClientRect().height;
       const seg = (v / total) * trackH;
       share.style.height = Math.round(seg) + 'px';
-      share.setAttribute('title', a + ': ' + v + ' (' + Math.round((v / total) * 100) + '% of the year)');
+      shareTip.set(share, {
+        artist: a,
+        year: y,
+        plays: v,
+        albums: (D.artist_year_albums[a] || {})[y] || []
+      });
     } else {
       col.classList.remove('hit');
       share.style.height = '0px';
+      shareTip.delete(share);
     }
   });
 }

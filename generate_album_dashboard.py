@@ -19,15 +19,25 @@ artist_totals = df.groupby("artist_name")["full_album_plays"].sum().to_dict()
 artists = sorted(artist_totals, key=lambda a: (-artist_totals[a], a.lower()))
 
 artist_year = {}
+artist_year_albums = {}
 for a in artists:
-    sub = df[df["artist_name"] == a].groupby("release_year")["full_album_plays"].sum()
-    artist_year[a] = {int(y): int(v) for y, v in sub.items()}
+    sub = df[df["artist_name"] == a]
+    per_year = sub.groupby("release_year")["full_album_plays"].sum()
+    artist_year[a] = {int(y): int(v) for y, v in per_year.items()}
+    d = {}
+    for y, g in sub.groupby("release_year"):
+        d[int(y)] = [
+            {"name": r.album_name, "plays": int(r.full_album_plays)}
+            for r in g.itertuples()
+        ]
+    artist_year_albums[a] = d
 
 data = {
     "years": years,
     "plays_by_year": {int(k): int(v) for k, v in plays_by_year.items()},
     "artists": artists,
     "artist_year": artist_year,
+    "artist_year_albums": artist_year_albums,
     "artist_totals": {a: int(artist_totals[a]) for a in artists},
 }
 
