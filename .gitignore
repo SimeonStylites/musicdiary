@@ -211,5 +211,6 @@ __marimo__/
 my_spotify_data/
 my_spotify_data_2/
 my_spotify_data_3/
+pipeline.log
 *.zip
 *.json

@@ -14,6 +14,30 @@ from db import get_connection, get_or_create_artist, get_or_create_album, event_
 load_dotenv()
 
 DATA_FOLDER = "my_spotify_data_3/Spotify Extended Streaming History"
+LOG_FILE = "pipeline.log"
+
+
+def log(message):
+    """Дублирует print в лог-файл с временной меткой."""
+    with open(LOG_FILE, "a", encoding="utf-8") as f:
+        f.write(f"[{datetime.now():%Y-%m-%d %H:%M:%S}] {message}\n")
+
+
+def _init_logging():
+    """Переводит stdout в UTF-8 и пишет каждое сообщение ещё и в лог-файл."""
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
+    console_print = print
+
+    def _print(*args, **kwargs):
+        if args:
+            log(kwargs.get("sep", " ").join(str(a) for a in args))
+        return console_print(*args, **kwargs)
+
+    return _print
 
 
 def get_spotify_client():
@@ -345,6 +369,49 @@ def step_generate_dashboard(conn=None):
     print(f"[dashboard] {len(artists)} артистов, {len(years)} лет → album_dashboard.html")
 
 
+def step_push(conn=None):
+    """Коммит изменённых файлов и отправка в origin."""
+    import subprocess
+
+    env = dict(os.environ)
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    env["GCM_INTERACTIVE"] = "Never"
+
+    def run(*args):
+        return subprocess.run(["git", *args], capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
+
+    status = run("status", "--porcelain")
+    if status.returncode != 0:
+        print(f"[push] git status не отработал: {status.stderr.strip()}")
+        return
+
+    if not status.stdout.strip():
+        print("[push] Изменений нет, пропуск")
+        return
+
+    add = run("add", "album_full_plays.csv", "album_dashboard.html", "docs/index.html")
+    if add.returncode != 0:
+        print(f"[push] git add не отработал: {add.stderr.strip()}")
+        return
+
+    staged = run("diff", "--cached", "--quiet")
+    if staged.returncode == 0:
+        print("[push] Изменений нет, пропуск")
+        return
+
+    commit = run("commit", "-m", "Auto-update dashboard")
+    if commit.returncode != 0:
+        print(f"[push] git commit не отработал: {commit.stderr.strip()}")
+        return
+    print(f"[push] {commit.stdout.strip()}")
+
+    push = run("push")
+    if push.returncode != 0:
+        print(f"[push] git push не отработал: {push.stderr.strip()}")
+        return
+    print(f"[push] {push.stdout.strip()}")
+
+
 def main():
     steps = {
         "import": step_import_json,
@@ -353,12 +420,16 @@ def main():
         "enrich-mb": step_enrich_musicbrainz,
         "export": step_export_csv,
         "dashboard": step_generate_dashboard,
+        "push": step_push,
     }
 
     if len(sys.argv) > 1:
         run_steps = sys.argv[1:]
     else:
         run_steps = list(steps.keys())
+
+    globals()["print"] = _init_logging()
+    log(f"=== Запуск: {' '.join(run_steps)} ===")
 
     conn = get_connection()
 
