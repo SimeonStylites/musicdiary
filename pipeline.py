@@ -336,7 +336,7 @@ def step_generate_dashboard():
     with open("album_dashboard.html", "w", encoding="utf-8") as f:
         f.write(html)
 
-    pages_dir = os.path.join("github-pages")
+    pages_dir = os.path.join("docs")
     os.makedirs(pages_dir, exist_ok=True)
     with open(os.path.join(pages_dir, "index.html"), "w", encoding="utf-8") as f:
         f.write(html)

@@ -4,7 +4,7 @@ import os
 
 DATA_FILE = "album_full_plays.csv"
 HTML_FILE = "album_dashboard.html"
-PAGES_FILE = os.path.join("github-pages", "index.html")
+PAGES_FILE = os.path.join("docs", "index.html")
 TEMPLATE_FILE = "album_dashboard_template.html"
 
 df = pd.read_csv(DATA_FILE, encoding="utf-8")
