@@ -13,7 +13,7 @@ from db import get_connection, get_or_create_artist, get_or_create_album, event_
 
 load_dotenv()
 
-DATA_FOLDER = "my_spotify_data_2/Spotify Extended Streaming History"
+DATA_FOLDER = "my_spotify_data_3/Spotify Extended Streaming History"
 
 
 def get_spotify_client():
@@ -120,9 +120,10 @@ def step_enrich_spotify(conn):
 
     cur = conn.cursor()
     cur.execute("""
-        SELECT album_id, spotify_album_id
-        FROM albums
-        WHERE spotify_release_date IS NULL AND spotify_total_tracks IS NULL
+        SELECT a.album_id, a.spotify_album_id
+        FROM albums a
+        WHERE a.spotify_release_date IS NULL AND a.spotify_total_tracks IS NULL
+          AND EXISTS (SELECT 1 FROM listening_events le WHERE le.album_id = a.album_id)
         LIMIT 100
     """)
     albums = cur.fetchall()
@@ -294,7 +295,7 @@ def step_export_csv(conn):
     return df
 
 
-def step_generate_dashboard():
+def step_generate_dashboard(conn=None):
     """Генерация HTML дашборда из CSV."""
     import pandas as pd
     import json
