@@ -1,5 +1,6 @@
 import sys
 import time
+import traceback
 from pathlib import Path
 from datetime import datetime
 import json
@@ -101,6 +102,95 @@ def step_import_json(conn):
             total_skipped += 1 - inserted
 
     print(f"[import] +{total_inserted} новых, {total_skipped} дубликатов")
+    fill_albums_from_parquet(conn)
+
+
+def fill_albums_from_parquet(conn):
+    """Заполняет spotify_album_id/дату/tt в albums из общего parquet — без API.
+    Мост: события БД -> tracks_min -> albums_min. Для альбомов, у которых sid ещё нет.
+    Недостающее остаётся на enrich-spotify."""
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT DISTINCT le.album_id, le.track_id
+        FROM listening_events le
+        JOIN albums a ON a.album_id = le.album_id
+        WHERE le.track_id IS NOT NULL AND a.spotify_album_id IS NULL
+    """)
+    pairs = cur.fetchall()
+    cur.close()
+    if not pairs:
+        print("[import] все альбомы уже с sid из parquet")
+        return
+    n_albums = len({a for a, _ in pairs})
+
+    import duckdb
+    con = duckdb.connect()
+    con.execute("SET preserve_insertion_order = false")
+    con.execute("CREATE TABLE want(album_id INTEGER, track_id VARCHAR)")
+    con.executemany("INSERT INTO want VALUES (?,?)", pairs)
+    tr_dir = TRACKS_MIN_DIR.replace(chr(92), "/")
+    al_dir = ALBUMS_MIN_DIR.replace(chr(92), "/")
+
+    # мост пишем пошагово: одним тройным join duckdb разливается (проверено: 412 с)
+    t0 = time.time()
+    con.execute(f"""
+        CREATE TABLE bridge AS
+        SELECT w.album_id, w.track_id, t.album_id AS sid
+        FROM want w JOIN read_parquet('{tr_dir}/*.parquet') t ON t.id = w.track_id
+    """)
+    con.execute(f"""
+        CREATE TABLE joined AS
+        SELECT b.album_id, b.sid, m.release_date, m.total_tracks,
+               count(DISTINCT b.track_id) AS my_n
+        FROM bridge b
+        JOIN read_parquet('{al_dir}/*.parquet') m ON m.id = b.sid
+        GROUP BY 1, 2, 3, 4
+    """)
+    # правило выбора издания: самая ранняя дата | больше моих треков | sid по алфавиту
+    # (sid в БД здесь не участвует — выборка только по альбомам, где его нет)
+    con.execute("""
+        CREATE TABLE pick AS
+        SELECT album_id,
+               arg_min(sid, coalesce(cast(release_date AS VARCHAR), '9999-99-99') || '|' ||
+                           lpad(cast(my_n AS VARCHAR), 5, '0') || '|' || sid) AS sid
+        FROM joined GROUP BY 1
+    """)
+    rows = con.execute("""
+        SELECT p.album_id, p.sid, c.release_date, c.total_tracks
+        FROM pick p JOIN joined c ON c.album_id = p.album_id AND c.sid = p.sid
+    """).fetchall()
+    con.close()
+
+    if not rows:
+        print(f"[import] в parquet нет ни одного трека из {n_albums} альбомов, "
+              f"оставлено на enrich-spotify ({round(time.time()-t0,1)} с)")
+        return
+
+    def norm_date(d):
+        if d and str(d).startswith("0000"):
+            return None
+        return normalize_release_date(d)
+
+    cur = conn.cursor()
+    updated = 0
+    for album_id, sid, raw_date, tt in rows:
+        sets = ["spotify_album_id = %s"]
+        params = [sid]
+        d = norm_date(raw_date)
+        if d:
+            sets.append("spotify_release_date = %s")
+            params.append(d)
+        if tt is not None:
+            sets.append("spotify_total_tracks = %s")
+            params.append(int(tt))
+        params.append(album_id)
+        cur.execute(f"UPDATE albums SET {', '.join(sets)} "
+                    f"WHERE album_id = %s AND spotify_album_id IS NULL", params)
+        updated += cur.rowcount
+    conn.commit()
+    cur.close()
+    print(f"[import] sid из parquet: {updated} альбомов из {n_albums} "
+          f"(остальные — на enrich-spotify), {round(time.time()-t0,1)} с")
 
 
 def step_collect_spotify(conn):
@@ -111,7 +201,12 @@ def step_collect_spotify(conn):
         print(f"[collect] Ошибка Spotify авторизации: {e}")
         return
 
-    results = sp.current_user_recently_played(limit=50)
+    try:
+        results = sp.current_user_recently_played(limit=50)
+    except Exception as e:
+        print(f"[collect] Ошибка Spotify API: {e}")
+        return
+
     saved = 0
 
     for item in results['items']:
@@ -134,6 +229,154 @@ def step_collect_spotify(conn):
     print(f"[collect] +{saved} новых из Spotify API (в ответе: {len(results['items'])})")
 
 
+ALBUMS_MIN_DIR = r"E:\spotify_parquet\albums_min"
+
+
+def sync_albums_min(conn):
+    """Дописывает в свой parquet альбомы, которых там нет (sid из БД)."""
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT DISTINCT a.spotify_album_id, a.spotify_release_date, a.spotify_total_tracks
+        FROM albums a
+        WHERE a.spotify_album_id IS NOT NULL
+          AND a.spotify_release_date IS NOT NULL
+          AND a.spotify_total_tracks IS NOT NULL
+          AND EXISTS (SELECT 1 FROM listening_events le WHERE le.album_id = a.album_id)
+    """)
+    rows = cur.fetchall()
+    cur.close()
+    if not rows:
+        print("[sync-albums] в БД нет альбомов с sid")
+        return
+
+    import duckdb
+    con = duckdb.connect()
+    con.execute("SET preserve_insertion_order = false")
+    con.execute("CREATE TABLE want(sid VARCHAR, rd DATE, tt INTEGER)")
+    con.executemany("INSERT INTO want VALUES (?,?,?)", rows)
+
+    dir_sql = ALBUMS_MIN_DIR.replace(chr(92), "/")
+    missing = con.execute(f"""
+        SELECT sid, rd, tt FROM want w
+        WHERE NOT EXISTS (SELECT 1 FROM read_parquet('{dir_sql}/*.parquet') p WHERE p.id = w.sid)
+    """).fetchall()
+
+    if not missing:
+        print(f"[sync-albums] всё на месте ({len(rows)} альбомов в БД)")
+        con.close()
+        return
+
+    con.execute("""CREATE TABLE delta(
+        id VARCHAR, release_date DATE, release_date_precision VARCHAR, total_tracks INTEGER)""")
+    con.executemany("INSERT INTO delta VALUES (?,?,NULL,?)",
+                    [(s, d, t) for s, d, t in missing])
+    out = f"{dir_sql}/delta-{datetime.now():%Y%m%d-%H%M%S}.parquet"
+    con.execute(f"COPY delta TO '{out}' (FORMAT parquet, COMPRESSION zstd)")
+    con.close()
+    print(f"[sync-albums] дописано в parquet: {len(missing)} (всего в БД: {len(rows)})")
+
+
+TRACKS_MIN_DIR = r"E:\spotify_parquet\tracks_min"
+
+
+def _json_track_ids(folders):
+    """Все spotify_track_uri из JSON-файлов (свои и чужие)."""
+    ids = set()
+    for folder in folders:
+        for f in sorted(Path(folder).glob("*.json")):
+            try:
+                events = json.loads(f.read_text(encoding="utf-8"))
+            except Exception as e:
+                print(f"[sync-tracks] не прочитал {f.name}: {e}")
+                continue
+            for e in events:
+                uri = e.get("spotify_track_uri")
+                if uri:
+                    ids.add(uri.split(":")[-1])
+    return ids
+
+
+def sync_tracks_min(conn, sp, json_folders=None):
+    """Дописывает в tracks_min связи трек→альбом для непокрытых треков
+    (источники: listening_events + JSON) и при необходимости — альбомы в albums_min."""
+    folders = json_folders or [DATA_FOLDER]
+
+    cur = conn.cursor()
+    cur.execute("SELECT DISTINCT track_id FROM listening_events WHERE track_id IS NOT NULL")
+    ids = {r[0] for r in cur.fetchall()}
+    cur.close()
+    n_db = len(ids)
+    ids |= _json_track_ids(folders)
+
+    import duckdb
+    con = duckdb.connect()
+    con.execute("SET preserve_insertion_order = false")
+    con.execute("CREATE TABLE want(id VARCHAR)")
+    con.executemany("INSERT INTO want VALUES (?)", [(i,) for i in ids])
+    tr_dir = TRACKS_MIN_DIR.replace(chr(92), "/")
+    missing = [r[0] for r in con.execute(f"""
+        SELECT w.id FROM want w
+        WHERE NOT EXISTS (SELECT 1 FROM read_parquet('{tr_dir}/*.parquet') p WHERE p.id = w.id)
+    """).fetchall()]
+
+    if not missing:
+        print(f"[sync-tracks] всё на месте ({len(ids)} треков: {n_db} из БД, "
+              f"{len(ids) - n_db} из JSON)")
+        con.close()
+        return
+
+    print(f"[sync-tracks] непокрытых треков: {len(missing)}, спрашиваю API...")
+    links, album_ids, errors = [], set(), 0
+    for tid in missing:
+        try:
+            aid = sp.track(tid)["album"]["id"]
+            links.append((tid, aid))
+            album_ids.add(aid)
+        except Exception:
+            errors += 1
+        time.sleep(0.5)
+
+    con.execute("CREATE TABLE aid(id VARCHAR)")
+    con.executemany("INSERT INTO aid VALUES (?)", [(a,) for a in album_ids])
+    al_dir = ALBUMS_MIN_DIR.replace(chr(92), "/")
+    need_album = [r[0] for r in con.execute(f"""
+        SELECT a.id FROM aid a
+        WHERE NOT EXISTS (SELECT 1 FROM read_parquet('{al_dir}/*.parquet') p WHERE p.id = a.id)
+    """).fetchall()]
+
+    new_albums = []
+    for aid in need_album:
+        try:
+            info = sp.album(aid)
+            raw = info.get("release_date") or ""
+            rd = None if raw.startswith("0000") else normalize_release_date(raw)
+            if rd is None:
+                print(f"[sync-tracks] у {aid} нет даты релиза ({raw!r}), пишу без неё")
+            new_albums.append((aid, rd, info.get("release_date_precision"),
+                               info.get("total_tracks")))
+        except Exception:
+            errors += 1
+        time.sleep(0.5)
+
+    if links:
+        con.execute("CREATE TABLE tl(id VARCHAR, album_id VARCHAR)")
+        con.executemany("INSERT INTO tl VALUES (?,?)", links)
+        out = f"{tr_dir}/delta-{datetime.now():%Y%m%d-%H%M%S}.parquet"
+        con.execute(f"COPY tl TO '{out}' (FORMAT parquet, COMPRESSION zstd)")
+        print(f"[sync-tracks] дописано связей: {len(links)}")
+
+    if new_albums:
+        con.execute("""CREATE TABLE na(
+            id VARCHAR, release_date DATE, release_date_precision VARCHAR, total_tracks INTEGER)""")
+        con.executemany("INSERT INTO na VALUES (?,?,?,?)", new_albums)
+        out = f"{al_dir}/delta-{datetime.now():%Y%m%d-%H%M%S}.parquet"
+        con.execute(f"COPY na TO '{out}' (FORMAT parquet, COMPRESSION zstd)")
+        print(f"[sync-tracks] дописано альбомов: {len(new_albums)}")
+
+    con.close()
+    print(f"[sync-tracks] треков проверено: {len(missing)}, без ответа API: {errors}")
+
+
 def step_enrich_spotify(conn):
     """Обогащение альбомов данными из Spotify API (дата, кол-во треков)."""
     try:
@@ -146,7 +389,8 @@ def step_enrich_spotify(conn):
     cur.execute("""
         SELECT a.album_id, a.spotify_album_id
         FROM albums a
-        WHERE a.spotify_release_date IS NULL AND a.spotify_total_tracks IS NULL
+        WHERE (a.spotify_album_id IS NULL
+               OR a.spotify_release_date IS NULL OR a.spotify_total_tracks IS NULL)
           AND EXISTS (SELECT 1 FROM listening_events le WHERE le.album_id = a.album_id)
         LIMIT 100
     """)
@@ -155,6 +399,8 @@ def step_enrich_spotify(conn):
     if not albums:
         print("[enrich-spotify] Все альбомы уже обогащены")
         cur.close()
+        sync_albums_min(conn)
+        sync_tracks_min(conn, sp)
         return
 
     print(f"[enrich-spotify] Обработка {len(albums)} альбомов...")
@@ -181,8 +427,9 @@ def step_enrich_spotify(conn):
                 continue
 
             cur.execute("""
-                UPDATE albums SET spotify_release_date = %s, spotify_total_tracks = %s WHERE album_id = %s
-            """, (release_date, total_tracks, album_id))
+                UPDATE albums SET spotify_album_id = %s, spotify_release_date = %s,
+                                  spotify_total_tracks = %s WHERE album_id = %s
+            """, (spotify_album_id, release_date, total_tracks, album_id))
             conn.commit()
             updated += 1
         except Exception as e:
@@ -192,6 +439,8 @@ def step_enrich_spotify(conn):
 
     cur.close()
     print(f"[enrich-spotify] Обновлено: {updated}")
+    sync_albums_min(conn)
+    sync_tracks_min(conn, sp)
 
 
 def step_enrich_musicbrainz(conn):
@@ -437,7 +686,10 @@ def main():
         if step_name not in steps:
             print(f"Неизвестный шаг: {step_name}")
             continue
-        steps[step_name](conn)
+        try:
+            steps[step_name](conn)
+        except Exception:
+            print(f"[{step_name}] Шаг упал:\n{traceback.format_exc()}")
 
     conn.close()
     print("\nГотово!")

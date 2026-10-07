@@ -213,5 +213,7 @@ my_spotify_data_2/
 my_spotify_data_3/
 pipeline.log
 AGENTS.md
+ARCHITECTURE.md
 *.zip
 *.json
+.tmp/
