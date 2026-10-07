@@ -18,11 +18,16 @@
   * { box-sizing: border-box; }
   body {
     margin: 0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
     background: var(--bg);
     color: var(--text);
   }
   header {
+    flex: 0 0 auto;
     padding: 18px 24px;
     background: var(--panel);
     border-bottom: 1px solid var(--border);
@@ -30,11 +35,12 @@
   header h1 { margin: 0; font-size: 20px; letter-spacing: -.2px; }
   header p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
   .chart-wrap {
-    padding: 16px 24px 28px;
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 0 24px 28px;
     overflow: auto;
-    height: calc(100vh - 100px);
   }
-  .chart { min-width: 780px; max-width: 1500px; margin: 0 auto; }
+  .chart { min-width: 780px; max-width: 1500px; margin: 16px auto 0; }
 
   .dash-header-row {
     position: sticky;
@@ -101,8 +107,7 @@
   body.hov .bar-col.hit .bar-track .bar-value { color: var(--green); }
   body.hov .bar-col:not(.hit) .bar-track { opacity: .14; }
   body.hov .bar-col:not(.hit) .bar-value { color: rgba(255,255,255,.25); }
-  body.hov .bar-col.hit .year-label { color: var(--green); }
-  body.hov .bar-col:not(.hit) .year-label { color: rgba(255,255,255,.25); }
+  body.hov .year-label.year-hit { color: var(--green); font-weight: 700; }
 
   .year-labels { display: flex; gap: 2px; padding: 8px 4px 36px; }
   .year-label {
@@ -308,11 +313,13 @@ years.forEach(y => {
 
 const labelsRow = document.createElement('div');
 labelsRow.className = 'year-labels';
+const yearLabels = [];
 years.forEach(y => {
   const lbl = document.createElement('div');
   lbl.className = 'year-label';
   lbl.textContent = y;
   labelsRow.appendChild(lbl);
+  yearLabels.push(lbl);
 });
 
 headerYears.appendChild(barsRow);
@@ -390,6 +397,7 @@ function clearHighlight() {
   hideTip();
   document.body.classList.remove('hov');
   document.querySelectorAll('.artist-row.active').forEach(r => r.classList.remove('active'));
+  document.querySelectorAll('.year-label.year-hit').forEach(l => l.classList.remove('year-hit'));
   barCols.forEach(({ track, share }) => {
     track.classList.remove('hit');
     share.style.height = '0px';
@@ -402,6 +410,7 @@ function highlight(a) {
   document.body.classList.add('hov');
   const ay = D.artist_year[a] || {};
   rows.forEach(r => r.classList.toggle('active', r.dataset.artist === a));
+  yearLabels.forEach((lbl, i) => lbl.classList.toggle('year-hit', !!(ay[years[i]] || 0)));
 
   barCols.forEach(({ col, track, share, year: y }) => {
     const total = totals[y] || 0;
