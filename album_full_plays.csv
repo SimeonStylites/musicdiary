@@ -1,18 +1,17 @@
 album_name,artist_name,full_album_plays,release_year,total_tracks
 Afro,Dizzy Gillespie,1,1954.0,7
-Somethin' Else,Cannonball Adderley,4,1958.0,6
 Somethin' Else (Rudy Van Gelder Edition),Cannonball Adderley,3,1958.0,6
+Somethin' Else,Cannonball Adderley,4,1958.0,6
 Nina Simone at Town Hall,Nina Simone,2,1959.0,11
-Little Girl Blue,Nina Simone,1,1959.0,10
 Little Girl Blue (2013 - Remaster),Nina Simone,1,1959.0,10
 The Shape Of Jazz To Come,Ornette Coleman,2,1959.0,6
 The Freewheelin' Bob Dylan,Bob Dylan,1,1963.0,13
 Highway 61 Revisited,Bob Dylan,2,1965.0,9
 Songs Of Leonard Cohen,Leonard Cohen,1,1967.0,10
 Odessey and Oracle (Mono Remastered),The Zombies,2,1968.0,12
+Led Zeppelin,Led Zeppelin,2,1969.0,9
 Led Zeppelin (Remaster),Led Zeppelin,1,1969.0,9
 Led Zeppelin II (Remaster),Led Zeppelin,1,1969.0,9
-Led Zeppelin,Led Zeppelin,2,1969.0,9
 Let It Bleed,The Rolling Stones,1,1969.0,9
 The Velvet Underground,The Velvet Underground,1,1969.0,10
 Tapestry,Carole King,1,1971.0,12
@@ -21,14 +20,16 @@ Eat A Peach,Allman Brothers Band,1,1972.0,9
 Paul Simon,Paul Simon,1,1972.0,14
 "The Wild, the Innocent & The E Street Shuffle",Bruce Springsteen,1,1973.0,7
 The Dark Side of the Moon,Pink Floyd,3,1973.0,10
-Closing Time,Tom Waits,1,1973.0,12
 Closing Time (Remastered),Tom Waits,1,1973.0,12
+Closing Time,Tom Waits,1,1973.0,12
 Honky Tonk Heroes,Waylon Jennings,4,1973.0,10
 Born To Run,Bruce Springsteen,4,1975.0,8
 Zuma,Neil Young,1,1975.0,9
 Jaco Pastorius,Jaco Pastorius,2,1976.0,11
 Songs from the Wood,Jethro Tull,1,1977.0,10
 Stained Class,Judas Priest,1,1978.0,11
+Rust Never Sleeps,Neil Young,1,1979.0,9
+Tchaikovsky: The Nutcracker,Pyotr Ilyich Tchaikovsky,1,1979.0,8
 Breakfast In America (Remastered 2026),Supertramp,1,1979.0,10
 Breakfast In America,Supertramp,1,1979.0,10
 Moving Pictures,Rush,1,1981.0,7
@@ -36,7 +37,6 @@ Hard Promises,Tom Petty and the Heartbreakers,1,1981.0,10
 Born In The U.S.A.,Bruce Springsteen,2,1984.0,12
 Don't Break the Oath,Mercyful Fate,1,1984.0,9
 Ride The Lightning (Remastered),Metallica,1,1984.0,8
-From Her to Eternity,Nick Cave & The Bad Seeds,1,1984.0,7
 Purple Rain,Prince,2,1984.0,9
 Skeptics Apocalypse,Agent Steel,2,1985.0,9
 Graceland (25th Anniversary Deluxe Edition),Paul Simon,2,1986.0,17
@@ -91,6 +91,7 @@ Nouns,No Age,2,2008.0,12
 Vampire Weekend,Vampire Weekend,2,2008.0,11
 Bitte Orca,Dirty Projectors,1,2009.0,9
 Veckatimest,Grizzly Bear,1,2009.0,12
+From Her to Eternity,Nick Cave & The Bad Seeds,1,2009.0,7
 Black Sands,Bonobo,2,2010.0,12
 TRON: Legacy,Daft Punk,1,2010.0,22
 Body Talk,Robyn,1,2010.0,15
@@ -101,6 +102,7 @@ The Idler Wheel Is Wiser Than the Driver of the Screw and Whipping Cords Will Se
 What the Brothers Sang,Dawn McCarthy,1,2013.0,13
 Leak 04-13 (Bait Ones),Jai Paul,18,2013.0,16
 Yeezus,Kanye West,1,2013.0,10
+Little Girl Blue,Nina Simone,1,2013.0,10
 Alvvays,Alvvays,1,2014.0,9
 Burn Your Fire For No Witness,Angel Olsen,1,2014.0,16
 Syro,Aphex Twin,1,2014.0,12
@@ -132,6 +134,7 @@ Crush,Floating Points,2,2019.0,12
 Titanic Rising,Weyes Blood,1,2019.0,10
 how i'm feeling now,Charli xcx,1,2020.0,11
 Fetch The Bolt Cutters,Fiona Apple,1,2020.0,13
+After The Gold Rush (50th Anniversary),Neil Young,1,2020.0,14
 Barn,Neil Young,3,2021.0,10
 RENAISSANCE,Beyoncé,2,2022.0,16
 Dragon New Warm Mountain I Believe In You,Big Thief,1,2022.0,20
@@ -145,7 +148,7 @@ HELLMODE,Jeff Rosenstock,1,2023.0,11
 "PetroDragonic Apocalypse; or, Dawn of Eternal Night: An Annihilation of Planet Earth and the Beginning of Merciless Damnation",King Gizzard & The Lizard Wizard,2,2023.0,7
 eternal sunshine,Ariana Grande,1,2024.0,13
 Heavy Metal,Cameron Winter,1,2024.0,10
-BRAT,Charli xcx,26,2024.0,15
+BRAT,Charli xcx,27,2024.0,15
 SHHHHHHH!,King Krule,1,2024.0,4
 Against the Fall of Night,Sungazer,1,2024.0,9
 LUX,ROSALÍA,1,2025.0,15
