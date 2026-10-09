@@ -193,19 +193,124 @@
   .tooltip .tt-album { display: flex; justify-content: space-between; gap: 12px; }
   .tooltip .tt-name { color: var(--text); }
   .tooltip .tt-plays { color: var(--green); font-variant-numeric: tabular-nums; }
+
+  .tabs { display: flex; gap: 8px; margin-top: 14px; }
+  .tabs.subtabs { margin-top: 8px; }
+  .tab {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 6px 16px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .tab.active { background: var(--green); border-color: var(--green); color: #0b0b0b; }
+  .gs-head { display: flex; align-items: baseline; gap: 12px; margin: 4px 0 10px; }
+  .gs-head .gs-title { font-size: 15px; font-weight: 700; }
+  .gs-head .gs-sub { color: var(--muted); font-size: 12px; }
+  .gs-back {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .gs-back:hover, .gs-pagebtn:hover:not(:disabled) { color: var(--text); border-color: var(--muted); }
+  .gs-row {
+    display: flex;
+    align-items: center;
+    height: 32px;
+    padding: 0 10px;
+    border-radius: 6px;
+    font-size: 13px;
+    gap: 10px;
+  }
+  .gs-row.click:hover { background: var(--panel-hover); cursor: pointer; }
+  .gs-row.hl { background: var(--panel-hover); }
+  .gs-row.hl .gs-artist { color: var(--green); }
+  .gs-row .gs-name {
+    flex: 0 0 360px;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-weight: 600;
+  }
+  .gs-row .gs-artist {
+    flex: 0 0 300px;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--muted);
+  }
+  .gs-row .gs-plays {
+    flex: 0 0 64px;
+    color: var(--green);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .gs-tracks { margin: 2px 0 6px 22px; border-left: 1px solid var(--border); padding-left: 10px; }
+  .gs-track {
+    display: flex;
+    align-items: center;
+    height: 26px;
+    gap: 10px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .gs-track .gs-tname {
+    flex: 0 0 320px;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .gs-track .gs-tplays {
+    flex: 0 0 64px;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+  .gs-pager { display: flex; gap: 10px; align-items: center; justify-content: center; margin-top: 14px; }
+  .gs-pager .gs-pageinfo { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .gs-pagebtn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .gs-pagebtn:disabled { opacity: .35; cursor: default; }
 </style>
 </head>
 <body>
 <header>
-  <h1>Fully listened albums in Spotify</h1>
-  <p>Top: full album plays by the album's release year. Below: artists sorted by total plays, dots show their plays in each year (shared year axis). Hover an artist or a dot to see the albums and the artist's share in the bars.</p>
+  <h1>Your Music Metrics</h1>
+  <p id="viewdesc">Top: full album plays by the album's release year. Below: artists sorted by total plays, dots show their plays in each year (shared year axis). Hover an artist or a dot to see the albums and the artist's share in the bars.</p>
+  <div class="tabs" id="tabs" hidden>
+    <button class="tab active" data-view="tracks">Tracks</button>
+    <button class="tab" data-view="artists">Artists</button>
+    <button class="tab" data-view="albums">Albums</button>
+  </div>
+  <div class="tabs subtabs" id="subtabs" hidden>
+    <button class="tab active" data-sub="list">Albums</button>
+    <button class="tab" data-sub="year">By year</button>
+  </div>
 </header>
 <div class="chart-wrap">
+  <div class="chart" id="tracksview" hidden></div>
+  <div class="chart" id="statsview" hidden></div>
+  <div class="chart" id="albumlist" hidden></div>
   <div class="chart" id="chart"></div>
-  <div class="legend">
-    <div class="chip"><span class="swatch" style="background:var(--green)"></span> full album plays by year</div>
-    <div class="chip"><span class="dot-swatch"></span> artist plays in year</div>
-  </div>
 </div>
 <div class="tooltip" id="tooltip"></div>
 
@@ -438,6 +543,186 @@ rows.forEach(r => {
 });
 
 artistsBox.addEventListener('mouseleave', clearHighlight);
+
+// ---------- tabs: tracks / artists / albums ----------
+if (D.general) {
+  const tabs = document.getElementById('tabs');
+  const subtabs = document.getElementById('subtabs');
+  const tracksview = document.getElementById('tracksview');
+  const statsview = document.getElementById('statsview');
+  const albumlist = document.getElementById('albumlist');
+  const viewdesc = document.getElementById('viewdesc');
+  tabs.hidden = false;
+  const DESC = {
+    tracks: 'Your most played tracks (10+ plays), sorted by plays — 50 per page. Hover a row to highlight the artist across other tracks.',
+    artists: 'All artists you have listened to, sorted by total plays — 50 per page. Click an artist to see their albums sorted by plays; click an album to expand its listened tracks, most played first.',
+    albums: ''
+  };
+  const DESC_SUB = {
+    list: 'Fully listened albums (all tracks played, 3+ tracks), sorted by full plays — album · artist · plays.',
+    year: "Top: full album plays by the album's release year. Below: artists sorted by total plays, dots show their plays in each year (shared year axis). Hover an artist or a dot to see the albums and the artist's share in the bars."
+  };
+  const PAGE = 50;
+
+  const pager = (start, total, noun, page, pages, onPrev, onNext) => {
+    const box = document.createElement('div');
+    box.className = 'gs-pager';
+    const prev = document.createElement('button');
+    prev.className = 'gs-pagebtn';
+    prev.textContent = '← Prev';
+    prev.disabled = page === 0;
+    prev.addEventListener('click', onPrev);
+    const info = document.createElement('span');
+    info.className = 'gs-pageinfo';
+    info.textContent = (start + 1) + '–' + Math.min(start + PAGE, total) +
+      ' of ' + total + ' ' + noun + ' · page ' + (page + 1) + '/' + pages;
+    const next = document.createElement('button');
+    next.className = 'gs-pagebtn';
+    next.textContent = 'Next →';
+    next.disabled = page >= pages - 1;
+    next.addEventListener('click', onNext);
+    box.appendChild(prev);
+    box.appendChild(info);
+    box.appendChild(next);
+    return box;
+  };
+
+  const span = (cls, txt) => {
+    const s = document.createElement('span');
+    s.className = cls;
+    s.textContent = txt;
+    return s;
+  };
+
+  // ----- Tracks -----
+  let tpage = 0;
+  function renderTracks() {
+    tracksview.innerHTML = '';
+    const list = D.tracks || [];
+    const start = tpage * PAGE;
+    const pages = Math.max(1, Math.ceil(list.length / PAGE));
+    list.slice(start, start + PAGE).forEach(t => {
+      const row = document.createElement('div');
+      row.className = 'gs-row';
+      row.dataset.artist = t.artist;
+      row.appendChild(span('gs-name', t.name));
+      row.appendChild(span('gs-artist', t.artist));
+      row.appendChild(span('gs-plays', t.plays));
+      row.addEventListener('mouseenter', () => {
+        tracksview.querySelectorAll('.gs-row').forEach(r =>
+          r.classList.toggle('hl', r.dataset.artist === t.artist));
+      });
+      row.addEventListener('mouseleave', () => {
+        tracksview.querySelectorAll('.gs-row.hl').forEach(r =>
+          r.classList.remove('hl'));
+      });
+      tracksview.appendChild(row);
+    });
+    tracksview.appendChild(pager(start, list.length, 'tracks', tpage, pages,
+      () => { tpage--; renderTracks(); },
+      () => { tpage++; renderTracks(); }));
+    tracksview.scrollIntoView({ block: 'start' });
+  }
+
+  // ----- Artists -----
+  let page = 0, artist = null;
+  function renderStats() {
+    statsview.innerHTML = '';
+    if (!artist) {
+      const list = D.general.artists;
+      const start = page * PAGE;
+      const pages = Math.max(1, Math.ceil(list.length / PAGE));
+      list.slice(start, start + PAGE).forEach(a => {
+        const row = document.createElement('div');
+        row.className = 'gs-row click';
+        row.appendChild(span('gs-name', a.name));
+        row.appendChild(span('gs-plays', a.plays));
+        row.addEventListener('click', () => { artist = a; renderStats(); });
+        statsview.appendChild(row);
+      });
+      statsview.appendChild(pager(start, list.length, 'artists', page, pages,
+        () => { page--; renderStats(); },
+        () => { page++; renderStats(); }));
+    } else {
+      const head = document.createElement('div');
+      head.className = 'gs-head';
+      const back = document.createElement('button');
+      back.className = 'gs-back';
+      back.textContent = '← All artists';
+      back.addEventListener('click', () => { artist = null; renderStats(); });
+      head.appendChild(back);
+      head.appendChild(span('gs-title', artist.name));
+      head.appendChild(span('gs-sub',
+        artist.plays + ' plays · ' + artist.albums.length + ' albums'));
+      statsview.appendChild(head);
+      artist.albums.forEach(al => {
+        const row = document.createElement('div');
+        row.className = 'gs-row click';
+        row.appendChild(span('gs-name', al.name));
+        row.appendChild(span('gs-plays', al.plays));
+        let tracksBox = null;
+        row.addEventListener('click', () => {
+          if (tracksBox) { tracksBox.remove(); tracksBox = null; return; }
+          tracksBox = document.createElement('div');
+          tracksBox.className = 'gs-tracks';
+          (al.tracks || []).forEach(t => {
+            const tr = document.createElement('div');
+            tr.className = 'gs-track';
+            tr.appendChild(span('gs-tname', t.name));
+            tr.appendChild(span('gs-tplays', t.plays));
+            tracksBox.appendChild(tr);
+          });
+          row.after(tracksBox);
+        });
+        statsview.appendChild(row);
+      });
+    }
+    statsview.scrollIntoView({ block: 'start' });
+  }
+
+  // ----- Albums: list / by year -----
+  function renderAlbumList() {
+    albumlist.innerHTML = '';
+    (D.full_albums || []).forEach(a => {
+      const row = document.createElement('div');
+      row.className = 'gs-row';
+      row.appendChild(span('gs-name', a.album));
+      row.appendChild(span('gs-artist', a.artist));
+      row.appendChild(span('gs-plays', a.plays));
+      albumlist.appendChild(row);
+    });
+    albumlist.scrollIntoView({ block: 'start' });
+  }
+
+  let sub = 'list';
+  function showSub(s) {
+    sub = s;
+    subtabs.querySelectorAll('.tab').forEach(b =>
+      b.classList.toggle('active', b.dataset.sub === s));
+    albumlist.hidden = s !== 'list';
+    chart.hidden = s !== 'year';
+    if (s === 'list') renderAlbumList();
+  }
+
+  function showView(v) {
+    tabs.querySelectorAll('.tab').forEach(b =>
+      b.classList.toggle('active', b.dataset.view === v));
+    tracksview.hidden = v !== 'tracks';
+    statsview.hidden = v !== 'artists';
+    const isAlbums = v === 'albums';
+    subtabs.hidden = !isAlbums;
+    if (!isAlbums) { albumlist.hidden = true; chart.hidden = true; }
+    viewdesc.textContent = DESC[v];
+    if (v === 'tracks') renderTracks();
+    if (v === 'artists') renderStats();
+    if (isAlbums) showSub(sub);
+  }
+  tabs.querySelectorAll('.tab').forEach(b =>
+    b.addEventListener('click', () => showView(b.dataset.view)));
+  subtabs.querySelectorAll('.tab').forEach(b =>
+    b.addEventListener('click', () => showSub(b.dataset.sub)));
+  showView('tracks');
+}
 </script>
 </body>
 </html>
