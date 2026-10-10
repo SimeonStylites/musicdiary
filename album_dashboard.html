@@ -195,6 +195,7 @@
   .tooltip .tt-plays { color: var(--green); font-variant-numeric: tabular-nums; }
 
   .tabs { display: flex; gap: 8px; margin-top: 14px; }
+  .tabs[hidden] { display: none; }
   .tabs.subtabs { margin-top: 8px; }
   .tab {
     background: transparent;
@@ -232,7 +233,6 @@
     gap: 10px;
   }
   .gs-row.click:hover { background: var(--panel-hover); cursor: pointer; }
-  .gs-row.hl { background: var(--panel-hover); }
   .gs-row.hl .gs-artist { color: var(--green); }
   .gs-row .gs-name {
     flex: 0 0 360px;
@@ -290,6 +290,63 @@
     cursor: pointer;
   }
   .gs-pagebtn:disabled { opacity: .35; cursor: default; }
+
+  .dyn-axis, .dyn-row { display: flex; align-items: center; height: 28px; gap: 10px; padding: 0 10px; }
+  .dyn-axis { height: 22px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+  .dyn-name {
+    flex: 0 0 300px; min-width: 0; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; font-size: 13px; font-weight: 600;
+  }
+  .dyn-axis .dyn-name { visibility: hidden; }
+  .dyn-plot { position: relative; flex: 1 1 auto; min-width: 0; height: 100%; }
+  .dyn-axis .dyn-plot { height: 100%; }
+  .dyn-tick {
+    position: absolute; top: 4px; transform: translateX(-50%);
+    font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums;
+  }
+  .dyn-tick::before {
+    content: ''; position: absolute; left: 50%; top: -4px; height: 6px;
+    border-left: 1px solid var(--border);
+  }
+  .dyn-grid { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--border); opacity: .4; }
+  .dyn-row:hover { background: var(--panel-hover); }
+  .dyn-line {
+    position: absolute; top: 50%; transform: translateY(-50%);
+    height: 2px; background: var(--green-dim);
+  }
+  .dyn-dot {
+    position: absolute; top: 50%; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--green); transform: translate(-50%, -50%); z-index: 1;
+  }
+  .dyn-dot.nth { background: #fff; }
+  .dyn-val {
+    flex: 0 0 64px; text-align: right; color: var(--green);
+    font-weight: 700; font-variant-numeric: tabular-nums; font-size: 13px;
+  }
+
+  .gen-section { margin-top: 22px; }
+  .gen-section h2 {
+    margin: 0 0 10px; font-size: 12px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .6px; color: var(--muted);
+  }
+  .gen-grid {
+    display: grid; gap: 12px;
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  }
+  .gen-card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px 18px;
+  }
+  .gen-value {
+    font-size: 26px; font-weight: 700; color: var(--green);
+    font-variant-numeric: tabular-nums; line-height: 1.15;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .gen-label { margin-top: 6px; font-size: 12px; color: var(--muted); }
+  .gen-card .gen-sub {
+    margin-top: 4px; font-size: 12px; color: var(--muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
 </style>
 </head>
 <body>
@@ -297,18 +354,19 @@
   <h1>Your Music Metrics</h1>
   <p id="viewdesc">Top: full album plays by the album's release year. Below: artists sorted by total plays, dots show their plays in each year (shared year axis). Hover an artist or a dot to see the albums and the artist's share in the bars.</p>
   <div class="tabs" id="tabs" hidden>
-    <button class="tab active" data-view="tracks">Tracks</button>
+    <button class="tab active" data-view="general">General</button>
+    <button class="tab" data-view="tracks">Tracks</button>
     <button class="tab" data-view="artists">Artists</button>
     <button class="tab" data-view="albums">Albums</button>
   </div>
-  <div class="tabs subtabs" id="subtabs" hidden>
-    <button class="tab active" data-sub="list">Albums</button>
-    <button class="tab" data-sub="year">By year</button>
-  </div>
+  <div class="tabs subtabs" id="subtabs" hidden></div>
 </header>
 <div class="chart-wrap">
+  <div class="chart" id="generalview" hidden></div>
   <div class="chart" id="tracksview" hidden></div>
+  <div class="chart" id="tracksdyn" hidden></div>
   <div class="chart" id="statsview" hidden></div>
+  <div class="chart" id="artistsdyn" hidden></div>
   <div class="chart" id="albumlist" hidden></div>
   <div class="chart" id="chart"></div>
 </div>
@@ -548,20 +606,14 @@ artistsBox.addEventListener('mouseleave', clearHighlight);
 if (D.general) {
   const tabs = document.getElementById('tabs');
   const subtabs = document.getElementById('subtabs');
+  const generalview = document.getElementById('generalview');
   const tracksview = document.getElementById('tracksview');
+  const tracksdyn = document.getElementById('tracksdyn');
   const statsview = document.getElementById('statsview');
+  const artistsdyn = document.getElementById('artistsdyn');
   const albumlist = document.getElementById('albumlist');
   const viewdesc = document.getElementById('viewdesc');
   tabs.hidden = false;
-  const DESC = {
-    tracks: 'Your most played tracks (10+ plays), sorted by plays — 50 per page. Hover a row to highlight the artist across other tracks.',
-    artists: 'All artists you have listened to, sorted by total plays — 50 per page. Click an artist to see their albums sorted by plays; click an album to expand its listened tracks, most played first.',
-    albums: ''
-  };
-  const DESC_SUB = {
-    list: 'Fully listened albums (all tracks played, 3+ tracks), sorted by full plays — album · artist · plays.',
-    year: "Top: full album plays by the album's release year. Below: artists sorted by total plays, dots show their plays in each year (shared year axis). Hover an artist or a dot to see the albums and the artist's share in the bars."
-  };
   const PAGE = 50;
 
   const pager = (start, total, noun, page, pages, onPrev, onNext) => {
@@ -593,6 +645,77 @@ if (D.general) {
     s.textContent = txt;
     return s;
   };
+
+  // ----- General -----
+  const fmtNum = n => Number(n).toLocaleString('en-US');
+  const fmtDur = ms => {
+    const mins = Math.round((ms || 0) / 60000);
+    return fmtNum(Math.floor(mins / 60)) + ' h ' + (mins % 60) + ' m';
+  };
+  const card = (value, label, sub) => {
+    const c = document.createElement('div');
+    c.className = 'gen-card';
+    const v = document.createElement('div');
+    v.className = 'gen-value';
+    v.textContent = value;
+    v.title = value;
+    const l = document.createElement('div');
+    l.className = 'gen-label';
+    l.textContent = label;
+    c.appendChild(v);
+    c.appendChild(l);
+    if (sub) {
+      const s = document.createElement('div');
+      s.className = 'gen-sub';
+      s.textContent = sub;
+      c.appendChild(s);
+    }
+    return c;
+  };
+  const section = (title, cards) => {
+    const sec = document.createElement('div');
+    sec.className = 'gen-section';
+    const h = document.createElement('h2');
+    h.textContent = title;
+    sec.appendChild(h);
+    const g = document.createElement('div');
+    g.className = 'gen-grid';
+    cards.forEach(c => g.appendChild(c));
+    sec.appendChild(g);
+    return sec;
+  };
+  function renderGeneral() {
+    generalview.innerHTML = '';
+    const st = D.stats || {}, tp = D.top || {}, rc = D.records || {};
+    generalview.appendChild(section('Summary', [
+      card(fmtNum(st.plays || 0), 'Plays'),
+      card(fmtDur(st.ms_total), 'Listening time'),
+      card(fmtNum(st.tracks || 0), 'Tracks'),
+      card(fmtNum(st.artists || 0), 'Artists'),
+      card(fmtNum(st.albums || 0), 'Albums'),
+      card(fmtNum(st.full_albums || 0), 'Full albums')
+    ]));
+    const trk = tp.track || {}, alb = tp.album || {}, art = tp.artist || {};
+    generalview.appendChild(section('Top', [
+      card(art.name || '—', 'Top artist',
+        art.name ? fmtNum(art.plays) + ' plays' : ''),
+      card(trk.name || '—', 'Top track',
+        trk.name ? trk.artist + ' · ' + fmtNum(trk.plays) + ' plays' : ''),
+      card(alb.name || '—', 'Top album',
+        alb.name ? alb.artist + ' · ' + fmtNum(alb.plays) + ' plays' : '')
+    ]));
+    const rk = rc.streak || {};
+    generalview.appendChild(section('Records', [
+      card(rc.busiest ? fmtNum(rc.busiest.plays) : '—', 'Busiest day',
+        rc.busiest ? rc.busiest.date : ''),
+      card(rk.days ? fmtNum(rk.days) : '—', 'Longest streak',
+        rk.days ? (rk.start + ' → ' + rk.end) : ''),
+      card(rc.avg_per_day != null ? fmtNum(rc.avg_per_day) : '—',
+        'Avg plays / active day',
+        rc.active_days ? fmtNum(rc.active_days) + ' active days' : '')
+    ]));
+    generalview.scrollIntoView({ block: 'start' });
+  }
 
   // ----- Tracks -----
   let tpage = 0;
@@ -680,48 +803,196 @@ if (D.general) {
     statsview.scrollIntoView({ block: 'start' });
   }
 
+  // ----- Tracks dynamics -----
+  let tdpage = 0;
+  function renderTrackDyn() {
+    renderDyn(tracksdyn, D.track_dynamics, tdpage,
+      it => it.name + ' — ' + it.artist,
+      n => { tdpage = n; renderTrackDyn(); }, 'tracks', D.track_dyn_n);
+  }
+
+  // ----- Artists dynamics -----
+  let adpage = 0;
+  function renderArtistDyn() {
+    renderDyn(artistsdyn, D.artist_dynamics, adpage,
+      it => it.name,
+      n => { adpage = n; renderArtistDyn(); }, 'artists', D.artist_dyn_n);
+  }
+
   // ----- Albums: list / by year -----
   function renderAlbumList() {
     albumlist.innerHTML = '';
     (D.full_albums || []).forEach(a => {
       const row = document.createElement('div');
-      row.className = 'gs-row';
+      row.className = 'gs-row click';
       row.appendChild(span('gs-name', a.album));
       row.appendChild(span('gs-artist', a.artist));
       row.appendChild(span('gs-plays', a.plays));
+      let tracksBox = null;
+      row.addEventListener('click', () => {
+        if (tracksBox) { tracksBox.remove(); tracksBox = null; return; }
+        tracksBox = document.createElement('div');
+        tracksBox.className = 'gs-tracks';
+        (a.tracks || []).forEach(t => {
+          const tr = document.createElement('div');
+          tr.className = 'gs-track';
+          tr.appendChild(span('gs-tname', t.name));
+          tr.appendChild(span('gs-tplays', t.plays));
+          tracksBox.appendChild(tr);
+        });
+        row.after(tracksBox);
+      });
       albumlist.appendChild(row);
     });
     albumlist.scrollIntoView({ block: 'start' });
   }
 
-  let sub = 'list';
-  function showSub(s) {
-    sub = s;
+  // ----- Dynamics (shared timeline) -----
+  const T0 = D.time_range ? D.time_range.min : 0;
+  const T1 = D.time_range ? D.time_range.max : 1;
+  const SPAN = Math.max(1, T1 - T0);
+  const pos = ts => (ts - T0) / SPAN * 100;
+  const pad2 = n => String(n).padStart(2, '0');
+  const fmtDate = ts => {
+    const d = new Date(ts * 1000);
+    return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+  };
+  const mkdiv = (cls, txt) => {
+    const e = document.createElement('div');
+    e.className = cls;
+    e.textContent = txt;
+    return e;
+  };
+
+  function renderDyn(container, items, page, labelFn, goPage, noun, nthN) {
+    container.innerHTML = '';
+    const all = items || [];
+    const start = page * PAGE;
+    const pages = Math.max(1, Math.ceil(all.length / PAGE));
+    const axis = mkdiv('dyn-axis', '');
+    axis.appendChild(mkdiv('dyn-name', ''));
+    const aplot = mkdiv('dyn-plot', '');
+    const y0 = new Date(T0 * 1000).getFullYear();
+    const y1 = new Date(T1 * 1000).getFullYear();
+    for (let y = y0; y <= y1; y++) {
+      const p = pos(Date.UTC(y, 0, 1) / 1000);
+      if (p < -0.5 || p > 100.5) continue;
+      const tick = mkdiv('dyn-tick', y);
+      tick.style.left = p + '%';
+      aplot.appendChild(tick);
+    }
+    axis.appendChild(aplot);
+    axis.appendChild(mkdiv('dyn-val', ''));
+    container.appendChild(axis);
+    all.slice(start, start + PAGE).forEach(it => {
+      const row = mkdiv('dyn-row', '');
+      const nm = mkdiv('dyn-name', labelFn(it));
+      nm.title = labelFn(it);
+      row.appendChild(nm);
+      const plot = mkdiv('dyn-plot', '');
+      const f = pos(it.first);
+      if (it.nth != null) {
+        const n = pos(it.nth);
+        const line = mkdiv('dyn-line', '');
+        line.style.left = Math.min(f, n) + '%';
+        line.style.width = Math.abs(n - f) + '%';
+        plot.appendChild(line);
+      }
+      const d1 = mkdiv('dyn-dot', '');
+      d1.style.left = f + '%';
+      d1.title = 'First play: ' + fmtDate(it.first);
+      plot.appendChild(d1);
+      if (it.nth != null) {
+        const d2 = mkdiv('dyn-dot nth', '');
+        d2.style.left = pos(it.nth) + '%';
+        d2.title = nthN + 'th play: ' + fmtDate(it.nth);
+        plot.appendChild(d2);
+      }
+      row.appendChild(plot);
+      row.appendChild(mkdiv('dyn-val', it.plays));
+      container.appendChild(row);
+    });
+    container.appendChild(pager(start, all.length, noun, page, pages,
+      () => goPage(page - 1), () => goPage(page + 1)));
+    container.scrollIntoView({ block: 'start' });
+  }
+
+  const SUBCFG = {
+    general: {
+      tabs: [],
+      desc: { all: 'Your listening at a glance.' },
+      panes: { all: generalview },
+      render: { all: renderGeneral }
+    },
+    tracks: {
+      tabs: [['all', 'All'], ['dynamics', 'Dynamics']],
+      desc: {
+        all: 'Most played tracks',
+        dynamics: 'Each line: first play (green dot) → ' + D.track_dyn_n +
+          'th play (white dot). Tracks with fewer than ' + D.track_dyn_n +
+          ' plays show only the first dot.'
+      },
+      panes: { all: tracksview, dynamics: tracksdyn },
+      render: { all: renderTracks, dynamics: renderTrackDyn }
+    },
+    artists: {
+      tabs: [['all', 'All'], ['dynamics', 'Dynamics']],
+      desc: {
+        all: 'Most played artists',
+        dynamics: 'Each line: first play (green dot) → ' + D.artist_dyn_n +
+          'th play (white dot). Artists with fewer than ' + D.artist_dyn_n +
+          ' plays show only the first dot.'
+      },
+      panes: { all: statsview, dynamics: artistsdyn },
+      render: { all: renderStats, dynamics: renderArtistDyn }
+    },
+    albums: {
+      tabs: [['list', 'All'], ['year', 'By year']],
+      desc: {
+        list: 'Most full played albums',
+        year: "Top: full album plays by the album's release year. Below: artists sorted by total plays, dots show their plays in each year (shared year axis). Hover an artist or a dot to see the albums and the artist's share in the bars."
+      },
+      panes: { list: albumlist, year: chart },
+      render: { list: renderAlbumList, year: () => {} }
+    }
+  };
+  const subState = { general: 'all', tracks: 'all', artists: 'all',
+                     albums: 'list' };
+  const ALLPANES = [generalview, tracksview, tracksdyn, statsview, artistsdyn,
+                    albumlist, chart];
+
+  function showSub(v, key) {
+    subState[v] = key;
+    const cfg = SUBCFG[v];
     subtabs.querySelectorAll('.tab').forEach(b =>
-      b.classList.toggle('active', b.dataset.sub === s));
-    albumlist.hidden = s !== 'list';
-    chart.hidden = s !== 'year';
-    if (s === 'list') renderAlbumList();
+      b.classList.toggle('active', b.dataset.sub === key));
+    ALLPANES.forEach(p => { p.hidden = true; });
+    cfg.panes[key].hidden = false;
+    viewdesc.textContent = cfg.desc[key];
+    const fn = cfg.render[key];
+    if (fn) fn();
   }
 
   function showView(v) {
     tabs.querySelectorAll('.tab').forEach(b =>
       b.classList.toggle('active', b.dataset.view === v));
-    tracksview.hidden = v !== 'tracks';
-    statsview.hidden = v !== 'artists';
-    const isAlbums = v === 'albums';
-    subtabs.hidden = !isAlbums;
-    if (!isAlbums) { albumlist.hidden = true; chart.hidden = true; }
-    viewdesc.textContent = DESC[v];
-    if (v === 'tracks') renderTracks();
-    if (v === 'artists') renderStats();
-    if (isAlbums) showSub(sub);
+    const cfg = SUBCFG[v];
+    subtabs.innerHTML = '';
+    cfg.tabs.forEach(([key, label]) => {
+      const b = document.createElement('button');
+      b.className = 'tab';
+      b.textContent = label;
+      b.dataset.sub = key;
+      b.addEventListener('click', () => showSub(v, key));
+      subtabs.appendChild(b);
+    });
+    subtabs.hidden = cfg.tabs.length === 0;
+    showSub(v, subState[v]);
   }
+
   tabs.querySelectorAll('.tab').forEach(b =>
     b.addEventListener('click', () => showView(b.dataset.view)));
-  subtabs.querySelectorAll('.tab').forEach(b =>
-    b.addEventListener('click', () => showSub(b.dataset.sub)));
-  showView('tracks');
+  showView('general');
 }
 </script>
 </body>
