@@ -320,7 +320,7 @@
   }
   .dyn-dot.nth { background: #fff; }
   .dyn-val {
-    flex: 0 0 64px; text-align: right; color: var(--green);
+    flex: 0 0 120px; text-align: right; color: var(--green);
     font-weight: 700; font-variant-numeric: tabular-nums; font-size: 13px;
   }
 
@@ -866,10 +866,29 @@ if (D.general) {
     e.textContent = txt;
     return e;
   };
+  const fmtDynDur = secs => {
+    if (secs == null) return '—';
+    const s = Math.round(secs);
+    const d = Math.floor(s / 86400);
+    const h = Math.floor((s % 86400) / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    if (d <= 0) return h > 0 ? h + ' h ' + m + ' m' : m + ' m';
+    if (d < 60) return d + ' d';
+    if (d < 730) return Math.floor(d / 30.44) + ' mo';
+    return Math.floor(d / 365) + ' y ' + Math.floor((d % 365) / 30.44) + ' mo';
+  };
+  const dynValTxt = it => {
+    const d = it.nth != null ? it.nth - it.first : null;
+    return fmtDynDur(d) + ' · ' + it.plays;
+  };
 
   function renderDyn(container, items, page, labelFn, goPage, noun, nthN) {
     container.innerHTML = '';
-    const all = items || [];
+    const all = (items || []).slice().sort((a, b) => {
+      const da = a.nth != null ? a.nth - a.first : Infinity;
+      const db = b.nth != null ? b.nth - b.first : Infinity;
+      return da - db;
+    });
     const start = page * PAGE;
     const pages = Math.max(1, Math.ceil(all.length / PAGE));
     const axis = mkdiv('dyn-axis', '');
@@ -912,7 +931,7 @@ if (D.general) {
         plot.appendChild(d2);
       }
       row.appendChild(plot);
-      row.appendChild(mkdiv('dyn-val', it.plays));
+      row.appendChild(mkdiv('dyn-val', dynValTxt(it)));
       container.appendChild(row);
     });
     container.appendChild(pager(start, all.length, noun, page, pages,
