@@ -617,6 +617,7 @@ if (D.general) {
   const artistsdyn = document.getElementById('artistsdyn');
   const albumlist = document.getElementById('albumlist');
   const viewdesc = document.getElementById('viewdesc');
+  if (D.hide_subtitle) viewdesc.style.display = 'none';
   tabs.hidden = false;
   const PAGE = 50;
 
@@ -954,7 +955,8 @@ if (D.general) {
       tabs: [['all', 'All'], ['dynamics', 'Dynamics']],
       desc: {
         all: 'Most played tracks',
-        dynamics: 'Each line: first play (green dot) → ' + D.track_dyn_n +
+        dynamics: D.dyn_label ? 'first ' + D.track_dyn_n + ' listenings' :
+          'Each line: first play (green dot) → ' + D.track_dyn_n +
           'th play (white dot). Tracks with fewer than ' + D.track_dyn_n +
           ' plays show only the first dot.'
       },
@@ -965,7 +967,8 @@ if (D.general) {
       tabs: [['all', 'All'], ['dynamics', 'Dynamics']],
       desc: {
         all: 'Most played artists',
-        dynamics: 'Each line: first play (green dot) → ' + D.artist_dyn_n +
+        dynamics: D.dyn_label ? 'first ' + D.artist_dyn_n + ' listenings' :
+          'Each line: first play (green dot) → ' + D.artist_dyn_n +
           'th play (white dot). Artists with fewer than ' + D.artist_dyn_n +
           ' plays show only the first dot.'
       },
@@ -994,7 +997,16 @@ if (D.general) {
       b.classList.toggle('active', b.dataset.sub === key));
     ALLPANES.forEach(p => { p.hidden = true; });
     cfg.panes[key].hidden = false;
-    viewdesc.textContent = cfg.desc[key];
+    if (D.hide_subtitle) {
+      if (key === 'dynamics') {
+        viewdesc.style.display = '';
+        viewdesc.textContent = cfg.desc[key];
+      } else {
+        viewdesc.style.display = 'none';
+      }
+    } else {
+      viewdesc.textContent = cfg.desc[key];
+    }
     const fn = cfg.render[key];
     if (fn) fn();
   }

@@ -734,6 +734,8 @@ def step_generate_dashboard(conn=None):
         "track_dynamics": track_dynamics,
         "artist_dyn_n": ARTIST_DYN_N,
         "track_dyn_n": TRACK_DYN_N,
+        "dyn_label": True,
+        "hide_subtitle": True,
         "stats": {
             "plays": len(events),
             "tracks": len(tplays),
