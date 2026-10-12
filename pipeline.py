@@ -569,37 +569,193 @@ def step_export_csv(conn):
 
 
 def step_generate_dashboard(conn=None):
-    """Генерация HTML дашборда из CSV."""
-    import pandas as pd
+    """Генерация HTML дашборда из БД: вкладки General/Tracks/Artists/Albums."""
     import json
+    from collections import Counter
+    from datetime import timedelta, timezone
 
-    df = pd.read_csv("album_full_plays.csv", encoding="utf-8")
-    df["release_year"] = df["release_year"].astype(int)
-    df["full_album_plays"] = df["full_album_plays"].astype(int)
+    MIN_TRACK_PLAYS = 10
+    ARTIST_DYN_N = 100
+    TRACK_DYN_N = 25
 
-    years = sorted(int(y) for y in df["release_year"].unique())
-    plays_by_year = df.groupby("release_year")["full_album_plays"].sum().to_dict()
-    artist_totals = df.groupby("artist_name")["full_album_plays"].sum().to_dict()
-    artists = sorted(artist_totals, key=lambda a: (-artist_totals[a], a.lower()))
+    conn = conn or get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT EXTRACT(TIMEZONE_HOUR FROM now())::int, "
+                "EXTRACT(TIMEZONE_MINUTE FROM now())::int")
+    h, m = cur.fetchone()
+    tz = timezone(timedelta(hours=h, minutes=m))
+    cur.execute("""
+        SELECT le.played_at, le.track_id, le.track_name, a.album_name,
+               ar.artist_name, a.spotify_release_date, a.spotify_total_tracks
+        FROM listening_events le
+        JOIN albums a ON a.album_id = le.album_id
+        JOIN artists ar ON ar.artist_id = a.artist_id
+    """)
+    rows = cur.fetchall()
+    cur.close()
 
+    events = []
+    for played_at, track_id, track_name, album_name, artist_name, rd, tt in rows:
+        if track_id is None:
+            continue
+        dt = played_at.replace(tzinfo=tz)
+        events.append({
+            "ts": dt, "epoch": dt.timestamp(), "track_id": track_id,
+            "track_name": track_name or track_id, "album_name": album_name,
+            "artist_name": artist_name, "release_date": rd, "total_tracks": tt,
+        })
+
+    groups = {}
+    for e in events:
+        groups.setdefault((e["artist_name"], e["album_name"]), []).append(e)
+
+    gen = {}
+    for (artist_name, album_name), evs in groups.items():
+        tcount = Counter(e["track_id"] for e in evs)
+        tname = {e["track_id"]: e["track_name"] for e in evs}
+        tracks = sorted(
+            ({"name": tname[t], "plays": c} for t, c in tcount.items()),
+            key=lambda x: (-x["plays"], x["name"].lower()))
+        gen.setdefault(artist_name, []).append({
+            "name": album_name, "plays": len(evs),
+            "listened": len(tcount), "total": evs[0]["total_tracks"],
+            "tracks": tracks})
+    for lst in gen.values():
+        lst.sort(key=lambda a: (-a["plays"], a["name"].lower()))
+
+    albums = []
+    for (artist_name, album_name), evs in groups.items():
+        rd, tt = evs[0]["release_date"], evs[0]["total_tracks"]
+        if rd is None or tt is None or tt < 3:
+            continue
+        counts = Counter(e["track_id"] for e in evs)
+        if len(counts) != tt:
+            continue
+        tname = {e["track_id"]: e["track_name"] for e in evs}
+        albums.append({
+            "album_name": album_name, "artist_name": artist_name,
+            "release_year": rd.year, "plays": min(counts.values()),
+            "total_tracks": int(tt),
+            "tracks": sorted(
+                ({"name": tname[t], "plays": c} for t, c in counts.items()),
+                key=lambda x: (-x["plays"], x["name"].lower())),
+        })
+
+    years = sorted({a["release_year"] for a in albums})
+    plays_by_year = {}
     artist_year = {}
     artist_year_albums = {}
-    for a in artists:
-        sub = df[df["artist_name"] == a]
-        per_year = sub.groupby("release_year")["full_album_plays"].sum()
-        artist_year[a] = {int(y): int(v) for y, v in per_year.items()}
-        d = {}
-        for y, g in sub.groupby("release_year"):
-            d[int(y)] = [{"name": r.album_name, "plays": int(r.full_album_plays)} for r in g.itertuples()]
-        artist_year_albums[a] = d
+    artist_totals = {}
+    for a in albums:
+        y, art = a["release_year"], a["artist_name"]
+        plays_by_year[y] = plays_by_year.get(y, 0) + a["plays"]
+        if art not in artist_totals:
+            artist_totals[art] = 0
+            artist_year[art] = {}
+            artist_year_albums[art] = {}
+        artist_totals[art] += a["plays"]
+        artist_year[art][y] = artist_year[art].get(y, 0) + a["plays"]
+        artist_year_albums[art].setdefault(y, []).append(
+            {"name": a["album_name"], "plays": a["plays"]})
+    artists = sorted(artist_totals, key=lambda x: (-artist_totals[x], x.lower()))
+
+    full_albums = sorted(
+        ({"album": a["album_name"], "artist": a["artist_name"],
+          "plays": a["plays"], "tracks": a["tracks"]} for a in albums),
+        key=lambda x: (-x["plays"], x["album"].lower()))
+
+    tplays = Counter(e["track_id"] for e in events)
+    tinfo = {}
+    for e in events:
+        tinfo.setdefault(e["track_id"], (e["track_name"], e["artist_name"]))
+    top_tracks = sorted(
+        ({"name": tinfo[t][0], "artist": tinfo[t][1], "plays": c}
+         for t, c in tplays.items() if c >= MIN_TRACK_PLAYS),
+        key=lambda x: (-x["plays"], x["name"].lower()))
+
+    t0 = min(e["epoch"] for e in events)
+    t1 = max(e["epoch"] for e in events)
+
+    ats, tts = {}, {}
+    for e in events:
+        ats.setdefault(e["artist_name"], []).append(e["epoch"])
+        tts.setdefault(e["track_id"], []).append(e["epoch"])
+    artist_dynamics = []
+    for a, ets in ats.items():
+        ets.sort()
+        artist_dynamics.append({
+            "name": a, "plays": len(ets), "first": ets[0],
+            "nth": ets[ARTIST_DYN_N - 1] if len(ets) >= ARTIST_DYN_N else None,
+        })
+    artist_dynamics.sort(key=lambda x: (-x["plays"], x["name"].lower()))
+    track_dynamics = []
+    for t, ets in tts.items():
+        ets.sort()
+        name, art = tinfo[t]
+        track_dynamics.append({
+            "name": name, "artist": art, "plays": len(ets), "first": ets[0],
+            "nth": ets[TRACK_DYN_N - 1] if len(ets) >= TRACK_DYN_N else None,
+        })
+    track_dynamics.sort(key=lambda x: (-x["plays"], x["name"].lower()))
+
+    days = Counter(e["ts"].date() for e in events)
+    busiest_day, busiest_plays = max(days.items(), key=lambda kv: kv[1])
+    ordered_days = sorted(days)
+    streak_len, streak_start, streak_end = 1, ordered_days[0], ordered_days[0]
+    run_len, run_start = 1, ordered_days[0]
+    for prev, cur in zip(ordered_days, ordered_days[1:]):
+        if (cur - prev).days == 1:
+            run_len += 1
+        else:
+            run_len, run_start = 1, cur
+        if run_len > streak_len:
+            streak_len, streak_start, streak_end = run_len, run_start, cur
+    active_days = len(days)
+
+    art_plays = {a: sum(x["plays"] for x in lst) for a, lst in gen.items()}
+    top_artist = max(art_plays, key=lambda a: (art_plays[a], a.lower()))
 
     data = {
         "years": years,
-        "plays_by_year": {int(k): int(v) for k, v in plays_by_year.items()},
+        "plays_by_year": {str(k): int(v) for k, v in plays_by_year.items()},
         "artists": artists,
-        "artist_year": artist_year,
-        "artist_year_albums": artist_year_albums,
+        "artist_year": {a: {str(k): int(v) for k, v in artist_year[a].items()}
+                        for a in artists},
+        "artist_year_albums": {a: artist_year_albums[a] for a in artists},
         "artist_totals": {a: int(artist_totals[a]) for a in artists},
+        "general": {"artists": sorted(
+            ({"name": a, "plays": sum(x["plays"] for x in lst), "albums": lst}
+             for a, lst in gen.items()),
+            key=lambda x: (-x["plays"], x["name"].lower()))},
+        "tracks": top_tracks,
+        "full_albums": full_albums,
+        "time_range": {"min": t0, "max": t1},
+        "artist_dynamics": artist_dynamics,
+        "track_dynamics": track_dynamics,
+        "artist_dyn_n": ARTIST_DYN_N,
+        "track_dyn_n": TRACK_DYN_N,
+        "stats": {
+            "plays": len(events),
+            "tracks": len(tplays),
+            "artists": len(gen),
+            "albums": len(groups),
+            "full_albums": len(full_albums),
+        },
+        "top": {
+            "artist": {"name": top_artist, "plays": int(art_plays[top_artist])},
+            "track": top_tracks[0] if top_tracks else None,
+            "album": ({"name": full_albums[0]["album"],
+                       "artist": full_albums[0]["artist"],
+                       "plays": full_albums[0]["plays"]}
+                      if full_albums else None),
+        },
+        "records": {
+            "busiest": {"date": busiest_day.isoformat(), "plays": int(busiest_plays)},
+            "streak": {"days": streak_len, "start": streak_start.isoformat(),
+                       "end": streak_end.isoformat()},
+            "active_days": active_days,
+            "avg_per_day": round(len(events) / active_days, 1),
+        },
     }
 
     with open("album_dashboard_template.html", "r", encoding="utf-8") as tf:
@@ -615,7 +771,8 @@ def step_generate_dashboard(conn=None):
     with open(os.path.join(pages_dir, "index.html"), "w", encoding="utf-8") as f:
         f.write(html)
 
-    print(f"[dashboard] {len(artists)} артистов, {len(years)} лет → album_dashboard.html")
+    print(f"[dashboard] {len(full_albums)} полных альбомов, {len(artists)} артистов, "
+          f"{len(years)} лет → album_dashboard.html")
 
 
 def step_push(conn=None):
