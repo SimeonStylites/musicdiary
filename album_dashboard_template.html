@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Fully listened albums in Spotify</title>
+<title>My Spotify Metrics</title>
 <style>
   :root {
     --bg: #121212;
@@ -351,8 +351,8 @@
 </head>
 <body>
 <header>
-  <h1>Your Music Metrics</h1>
-  <p id="viewdesc">Top: full album plays by the album's release year. Below: artists sorted by total plays, dots show their plays in each year (shared year axis). Hover an artist or a dot to see the albums and the artist's share in the bars.</p>
+  <h1 id="sitetitle">My Spotify Metrics</h1>
+  <p id="viewdesc">Top: complete-album plays by release year. Below: artists sorted by total plays; dots show their plays per year (shared year axis). Hover an artist or a dot to see its albums and its share in the bars.</p>
   <div class="tabs" id="tabs" hidden>
     <button class="tab active" data-view="general">General</button>
     <button class="tab" data-view="tracks">Tracks</button>
@@ -375,6 +375,10 @@
 <script>
 const D = __DATA__;
 const SVGNS = 'http://www.w3.org/2000/svg';
+if (D.title) {
+  document.getElementById('sitetitle').textContent = D.title;
+  document.title = D.title;
+}
 const BAR_H = 220;
 const VALUE_H = 16;
 const USEFUL_H = BAR_H - VALUE_H - 4;
@@ -971,8 +975,8 @@ if (D.general) {
     albums: {
       tabs: [['list', 'All'], ['year', 'By year']],
       desc: {
-        list: 'Most full played albums',
-        year: "Top: full album plays by the album's release year. Below: artists sorted by total plays, dots show their plays in each year (shared year axis). Hover an artist or a dot to see the albums and the artist's share in the bars."
+        list: 'Most played complete albums',
+        year: "Top: complete-album plays by release year. Below: artists sorted by total plays; dots show their plays per year (shared year axis). Hover an artist or a dot to see its albums and its share in the bars."
       },
       panes: { list: albumlist, year: chart },
       render: { list: renderAlbumList, year: () => {} }
