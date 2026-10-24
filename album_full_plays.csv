@@ -1,9 +1,9 @@
 album_name,artist_name,full_album_plays,release_year,total_tracks
 Afro,Dizzy Gillespie,1,1954.0,7
-Somethin' Else,Cannonball Adderley,4,1958.0,6
 Somethin' Else (Rudy Van Gelder Edition),Cannonball Adderley,3,1958.0,6
-Little Girl Blue (2013 - Remaster),Nina Simone,1,1959.0,10
+Somethin' Else,Cannonball Adderley,4,1958.0,6
 Nina Simone at Town Hall,Nina Simone,2,1959.0,11
+Little Girl Blue (2013 - Remaster),Nina Simone,1,1959.0,10
 The Shape Of Jazz To Come,Ornette Coleman,2,1959.0,6
 The Freewheelin' Bob Dylan,Bob Dylan,1,1963.0,13
 Highway 61 Revisited,Bob Dylan,2,1965.0,9
@@ -31,8 +31,8 @@ Songs from the Wood,Jethro Tull,1,1977.0,10
 Stained Class,Judas Priest,1,1978.0,11
 Rust Never Sleeps,Neil Young,1,1979.0,9
 Tchaikovsky: The Nutcracker,Pyotr Ilyich Tchaikovsky,1,1979.0,8
-Breakfast In America (Remastered 2026),Supertramp,1,1979.0,10
 Breakfast In America,Supertramp,1,1979.0,10
+Breakfast In America (Remastered 2026),Supertramp,1,1979.0,10
 The River,Bruce Springsteen,1,1980.0,20
 Moving Pictures,Rush,1,1981.0,7
 Hard Promises,Tom Petty and the Heartbreakers,1,1981.0,10
@@ -48,6 +48,7 @@ Pump,Aerosmith,1,1989.0,10
 Gretchen Goes To Nebraska,King's X,1,1989.0,12
 Full Moon Fever,Tom Petty,1,1989.0,12
 Nothing Face,Voivod,1,1989.0,9
+Чёрный альбом,Kino,1,1990.0,10
 Ragged Glory,Neil Young,2,1990.0,10
 Harvest Moon,Neil Young,1,1992.0,10
 Siamese Dream,The Smashing Pumpkins,1,1993.0,13
