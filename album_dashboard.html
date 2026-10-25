@@ -576,6 +576,7 @@ function makeArtistRow(a) {
       svg.addEventListener('mousemove', moveTip);
       svg.addEventListener('mouseleave', hideTip);
       svg.addEventListener('click', (e) => {
+        e.stopPropagation();
         const t = tipData.get(svg);
         if (t) showTip(e, t.artist, t.year, t.plays, t.albums);
       });
