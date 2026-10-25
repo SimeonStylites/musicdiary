@@ -365,6 +365,7 @@
   <div class="chart" id="generalview" hidden></div>
   <div class="chart" id="tracksview" hidden></div>
   <div class="chart" id="tracksdyn" hidden></div>
+  <div class="chart" id="discdays" hidden></div>
   <div class="chart" id="statsview" hidden></div>
   <div class="chart" id="artistsdyn" hidden></div>
   <div class="chart" id="albumlist" hidden></div>
@@ -613,6 +614,7 @@ if (D.general) {
   const generalview = document.getElementById('generalview');
   const tracksview = document.getElementById('tracksview');
   const tracksdyn = document.getElementById('tracksdyn');
+  const discdays = document.getElementById('discdays');
   const statsview = document.getElementById('statsview');
   const artistsdyn = document.getElementById('artistsdyn');
   const albumlist = document.getElementById('albumlist');
@@ -753,6 +755,46 @@ if (D.general) {
       () => { tpage--; renderTracks(); },
       () => { tpage++; renderTracks(); }));
     tracksview.scrollIntoView({ block: 'start' });
+  }
+
+  // ----- Tracks: discovery days -----
+  const DISCOVERY_MIN_PLAYS = 6;
+  let ddpage = 0;
+  function renderDiscovery() {
+    discdays.innerHTML = '';
+    const byday = {};
+    (D.track_dynamics || []).forEach(t => {
+      if (t.plays < DISCOVERY_MIN_PLAYS) return;
+      const day = fmtDate(t.first);
+      const d = byday[day] || (byday[day] = { day: day, total: 0, tracks: [] });
+      d.total += t.plays;
+      d.tracks.push(t);
+    });
+    const all = Object.values(byday).sort((a, b) =>
+      b.total - a.total || (a.day < b.day ? -1 : 1));
+    const start = ddpage * PAGE;
+    const pages = Math.max(1, Math.ceil(all.length / PAGE));
+    all.slice(start, start + PAGE).forEach(d => {
+      const head = document.createElement('div');
+      head.className = 'gs-head';
+      head.appendChild(span('gs-title', d.day));
+      head.appendChild(span('gs-sub', fmtNum(d.total) + ' plays · ' +
+        d.tracks.length + ' tracks'));
+      discdays.appendChild(head);
+      d.tracks.forEach(t => {
+        const row = document.createElement('div');
+        row.className = 'gs-row';
+        row.appendChild(span('gs-name', t.name));
+        row.appendChild(span('gs-artist', t.artist));
+        row.appendChild(span('gs-plays', t.plays));
+        discdays.appendChild(row);
+      });
+    });
+    discdays.appendChild(pager(start, all.length, 'discovery days', ddpage,
+      pages,
+      () => { ddpage--; renderDiscovery(); },
+      () => { ddpage++; renderDiscovery(); }));
+    discdays.scrollIntoView({ block: 'start' });
   }
 
   // ----- Artists -----
@@ -952,16 +994,23 @@ if (D.general) {
       render: { all: renderGeneral }
     },
     tracks: {
-      tabs: [['all', 'All'], ['dynamics', 'Dynamics']],
+      tabs: [['all', 'All'], ['dynamics', 'Dynamics'],
+             ['discovery', 'Discovery days']],
       desc: {
         all: 'Most played tracks',
+        discovery: 'Days, when you discover your favourite tracks. ' +
+          'Under each day: tracks with ' + DISCOVERY_MIN_PLAYS +
+          '+ plays first heard that day, sorted by plays; ' +
+          'days sorted by the total plays of those tracks.',
         dynamics: D.dyn_label ? 'first ' + D.track_dyn_n + ' listenings' :
           'Each line: first play (green dot) → ' + D.track_dyn_n +
           'th play (white dot). Tracks with fewer than ' + D.track_dyn_n +
           ' plays show only the first dot.'
       },
-      panes: { all: tracksview, dynamics: tracksdyn },
-      render: { all: renderTracks, dynamics: renderTrackDyn }
+      panes: { all: tracksview, dynamics: tracksdyn,
+               discovery: discdays },
+      render: { all: renderTracks, dynamics: renderTrackDyn,
+                discovery: renderDiscovery }
     },
     artists: {
       tabs: [['all', 'All'], ['dynamics', 'Dynamics']],
@@ -987,8 +1036,8 @@ if (D.general) {
   };
   const subState = { general: 'all', tracks: 'all', artists: 'all',
                      albums: 'list' };
-  const ALLPANES = [generalview, tracksview, tracksdyn, statsview, artistsdyn,
-                    albumlist, chart];
+  const ALLPANES = [generalview, tracksview, tracksdyn, discdays, statsview,
+                    artistsdyn, albumlist, chart];
 
   function showSub(v, key) {
     subState[v] = key;
@@ -998,7 +1047,7 @@ if (D.general) {
     ALLPANES.forEach(p => { p.hidden = true; });
     cfg.panes[key].hidden = false;
     if (D.hide_subtitle) {
-      if (key === 'dynamics') {
+      if (key === 'dynamics' || key === 'discovery') {
         viewdesc.style.display = '';
         viewdesc.textContent = cfg.desc[key];
       } else {
