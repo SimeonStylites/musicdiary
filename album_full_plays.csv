@@ -1,17 +1,17 @@
 album_name,artist_name,full_album_plays,release_year,total_tracks
 Afro,Dizzy Gillespie,1,1954.0,7
-Somethin' Else (Rudy Van Gelder Edition),Cannonball Adderley,3,1958.0,6
 Somethin' Else,Cannonball Adderley,4,1958.0,6
-Nina Simone at Town Hall,Nina Simone,2,1959.0,11
+Somethin' Else (Rudy Van Gelder Edition),Cannonball Adderley,3,1958.0,6
 Little Girl Blue (2013 - Remaster),Nina Simone,1,1959.0,10
+Nina Simone at Town Hall,Nina Simone,2,1959.0,11
 The Shape Of Jazz To Come,Ornette Coleman,2,1959.0,6
 The Freewheelin' Bob Dylan,Bob Dylan,1,1963.0,13
 Highway 61 Revisited,Bob Dylan,2,1965.0,9
 Songs Of Leonard Cohen,Leonard Cohen,1,1967.0,10
 Odessey and Oracle (Mono Remastered),The Zombies,2,1968.0,12
-Led Zeppelin II (Remaster),Led Zeppelin,1,1969.0,9
-Led Zeppelin,Led Zeppelin,2,1969.0,9
 Led Zeppelin (Remaster),Led Zeppelin,1,1969.0,9
+Led Zeppelin,Led Zeppelin,2,1969.0,9
+Led Zeppelin II (Remaster),Led Zeppelin,1,1969.0,9
 Let It Bleed,The Rolling Stones,1,1969.0,9
 The Velvet Underground,The Velvet Underground,1,1969.0,10
 Parallelograms,Linda Perhacs,1,1970.0,11
@@ -158,7 +158,8 @@ Against the Fall of Night,Sungazer,1,2024.0,9
 несколько вопросов самому себе,конец солнечных дней,1,2024.0,19
 LUX,ROSALÍA,1,2025.0,15
 Bleeds,Wednesday,1,2025.0,12
-Wuthering Heights,Charli xcx,1,2026.0,12
 "Music, Fashion, Film",Charli xcx,4,2026.0,11
+Wuthering Heights,Charli xcx,1,2026.0,12
 BULLY,Kanye West,1,2026.0,18
+Nothing's About to Happen to Me,Mitski,2,2026.0,11
 "Нет, это я хочу умереть в Новом Орлеане",Золотые зубы,2,2026.0,8
