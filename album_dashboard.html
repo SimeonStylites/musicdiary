@@ -372,6 +372,14 @@
     .gen-card { padding: 12px 14px; }
     .gen-value { font-size: 22px; }
   }
+  .note-banner {
+    flex: 0 0 auto;
+    padding: 9px 24px;
+    background: #2a2418;
+    color: #e8b64c;
+    border-bottom: 1px solid #4a3d20;
+    font-size: 13px;
+  }
 </style>
 </head>
 <body>
@@ -386,6 +394,7 @@
   </div>
   <div class="tabs subtabs" id="subtabs" hidden></div>
 </header>
+<div class="note-banner" id="notebanner" hidden></div>
 <div class="chart-wrap">
   <div class="chart" id="generalview" hidden></div>
   <div class="chart" id="tracksview" hidden></div>
@@ -404,6 +413,11 @@ const SVGNS = 'http://www.w3.org/2000/svg';
 if (D.title) {
   document.getElementById('sitetitle').textContent = D.title;
   document.title = D.title;
+}
+const notebanner = document.getElementById('notebanner');
+if (D.note) {
+  notebanner.textContent = D.note;
+  notebanner.hidden = false;
 }
 const BAR_H = 220;
 const VALUE_H = 16;
@@ -863,7 +877,7 @@ if (D.general) {
       back.addEventListener('click', () => { artist = null; renderStats(); });
       head.appendChild(back);
       head.appendChild(span('gs-title', artist.name));
-      const sub = artist.plays + ' plays · ' + artist.albums.length + ' albums';
+      let sub = artist.plays + ' plays · ' + artist.albums.length + ' albums';
       if (artist.genre) sub += ' · ' + artist.genre;
       head.appendChild(span('gs-sub', sub));
       statsview.appendChild(head);

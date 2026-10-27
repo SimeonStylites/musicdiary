@@ -347,12 +347,45 @@
     margin-top: 4px; font-size: 12px; color: var(--muted);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
+
+  @media (max-width: 700px) {
+    header { padding: 14px 12px; }
+    header h1 { font-size: 17px; }
+    .chart-wrap { padding: 0 10px 20px; }
+    .chart { min-width: 0; width: 100%; }
+    .tabs { flex-wrap: wrap; gap: 6px; }
+    .tab { padding: 5px 12px; }
+    .gs-row { padding: 0 6px; gap: 8px; height: 36px; }
+    .gs-row .gs-name { flex: 1 1 55%; }
+    .gs-row .gs-artist { flex: 1 1 30%; }
+    .gs-row .gs-plays { flex: 0 0 48px; text-align: right; }
+    .gs-head { flex-wrap: wrap; }
+    .gs-tracks { margin-left: 8px; padding-left: 8px; }
+    .gs-track .gs-tname { flex: 1 1 auto; }
+    .gs-track .gs-tplays { flex: 0 0 48px; text-align: right; }
+    .gs-pager { flex-wrap: wrap; }
+    .dyn-name { flex: 0 0 34%; }
+    .dyn-val { flex: 0 0 64px; }
+    .name-cell { width: 88px; min-width: 88px; gap: 5px; font-size: 11px; }
+    .artist-row { height: 32px; }
+    .gen-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+    .gen-card { padding: 12px 14px; }
+    .gen-value { font-size: 22px; }
+  }
+  .note-banner {
+    flex: 0 0 auto;
+    padding: 9px 24px;
+    background: #2a2418;
+    color: #e8b64c;
+    border-bottom: 1px solid #4a3d20;
+    font-size: 13px;
+  }
 </style>
 </head>
 <body>
 <header>
   <h1 id="sitetitle">My Spotify Metrics</h1>
-  <p id="viewdesc">Top: complete-album plays by release year. Below: artists sorted by total plays; dots show their plays per year (shared year axis). Hover an artist or a dot to see its albums and its share in the bars.</p>
+  <p id="viewdesc">Top: complete-album plays by release year. Below: artists sorted by total plays; dots show their plays per year (shared year axis). Hover or tap an artist or a dot to see its albums and its share in the bars.</p>
   <div class="tabs" id="tabs" hidden>
     <button class="tab active" data-view="general">General</button>
     <button class="tab" data-view="tracks">Tracks</button>
@@ -361,10 +394,12 @@
   </div>
   <div class="tabs subtabs" id="subtabs" hidden></div>
 </header>
+<div class="note-banner" id="notebanner" hidden></div>
 <div class="chart-wrap">
   <div class="chart" id="generalview" hidden></div>
   <div class="chart" id="tracksview" hidden></div>
   <div class="chart" id="tracksdyn" hidden></div>
+  <div class="chart" id="discdays" hidden></div>
   <div class="chart" id="statsview" hidden></div>
   <div class="chart" id="artistsdyn" hidden></div>
   <div class="chart" id="albumlist" hidden></div>
@@ -378,6 +413,11 @@ const SVGNS = 'http://www.w3.org/2000/svg';
 if (D.title) {
   document.getElementById('sitetitle').textContent = D.title;
   document.title = D.title;
+}
+const notebanner = document.getElementById('notebanner');
+if (D.note) {
+  notebanner.textContent = D.note;
+  notebanner.hidden = false;
 }
 const BAR_H = 220;
 const VALUE_H = 16;
@@ -471,6 +511,10 @@ years.forEach(y => {
   });
   share.addEventListener('mousemove', moveTip);
   share.addEventListener('mouseleave', hideTip);
+  share.addEventListener('click', (e) => {
+    const t = shareTip.get(share);
+    if (t) showTip(e, t.artist, t.year, t.plays, t.albums);
+  });
   col.appendChild(val);
   col.appendChild(track);
   barsRow.appendChild(col);
@@ -545,6 +589,11 @@ function makeArtistRow(a) {
       });
       svg.addEventListener('mousemove', moveTip);
       svg.addEventListener('mouseleave', hideTip);
+      svg.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const t = tipData.get(svg);
+        if (t) showTip(e, t.artist, t.year, t.plays, t.albums);
+      });
     }
     cell.appendChild(svg);
     dotsRow.appendChild(cell);
@@ -602,6 +651,10 @@ function highlight(a) {
 
 rows.forEach(r => {
   r.addEventListener('mouseenter', () => highlight(r.dataset.artist));
+  r.addEventListener('click', () => {
+    if (r.classList.contains('active')) clearHighlight();
+    else highlight(r.dataset.artist);
+  });
 });
 
 artistsBox.addEventListener('mouseleave', clearHighlight);
@@ -613,6 +666,7 @@ if (D.general) {
   const generalview = document.getElementById('generalview');
   const tracksview = document.getElementById('tracksview');
   const tracksdyn = document.getElementById('tracksdyn');
+  const discdays = document.getElementById('discdays');
   const statsview = document.getElementById('statsview');
   const artistsdyn = document.getElementById('artistsdyn');
   const albumlist = document.getElementById('albumlist');
@@ -755,6 +809,46 @@ if (D.general) {
     tracksview.scrollIntoView({ block: 'start' });
   }
 
+  // ----- Tracks: discovery days -----
+  const DISCOVERY_MIN_PLAYS = 6;
+  let ddpage = 0;
+  function renderDiscovery() {
+    discdays.innerHTML = '';
+    const byday = {};
+    (D.track_dynamics || []).forEach(t => {
+      if (t.plays < DISCOVERY_MIN_PLAYS) return;
+      const day = fmtDate(t.first);
+      const d = byday[day] || (byday[day] = { day: day, total: 0, tracks: [] });
+      d.total += t.plays;
+      d.tracks.push(t);
+    });
+    const all = Object.values(byday).sort((a, b) =>
+      b.total - a.total || (a.day < b.day ? -1 : 1));
+    const start = ddpage * PAGE;
+    const pages = Math.max(1, Math.ceil(all.length / PAGE));
+    all.slice(start, start + PAGE).forEach(d => {
+      const head = document.createElement('div');
+      head.className = 'gs-head';
+      head.appendChild(span('gs-title', d.day));
+      head.appendChild(span('gs-sub', fmtNum(d.total) + ' plays · ' +
+        d.tracks.length + ' tracks'));
+      discdays.appendChild(head);
+      d.tracks.forEach(t => {
+        const row = document.createElement('div');
+        row.className = 'gs-row';
+        row.appendChild(span('gs-name', t.name));
+        row.appendChild(span('gs-artist', t.artist));
+        row.appendChild(span('gs-plays', t.plays));
+        discdays.appendChild(row);
+      });
+    });
+    discdays.appendChild(pager(start, all.length, 'discovery days', ddpage,
+      pages,
+      () => { ddpage--; renderDiscovery(); },
+      () => { ddpage++; renderDiscovery(); }));
+    discdays.scrollIntoView({ block: 'start' });
+  }
+
   // ----- Artists -----
   let page = 0, artist = null;
   function renderStats() {
@@ -783,8 +877,9 @@ if (D.general) {
       back.addEventListener('click', () => { artist = null; renderStats(); });
       head.appendChild(back);
       head.appendChild(span('gs-title', artist.name));
-      head.appendChild(span('gs-sub',
-        artist.plays + ' plays · ' + artist.albums.length + ' albums'));
+      let sub = artist.plays + ' plays · ' + artist.albums.length + ' albums';
+      if (artist.genre) sub += ' · ' + artist.genre;
+      head.appendChild(span('gs-sub', sub));
       statsview.appendChild(head);
       artist.albums.forEach(al => {
         const row = document.createElement('div');
@@ -952,16 +1047,23 @@ if (D.general) {
       render: { all: renderGeneral }
     },
     tracks: {
-      tabs: [['all', 'All'], ['dynamics', 'Dynamics']],
+      tabs: [['all', 'All'], ['dynamics', 'Dynamics'],
+             ['discovery', 'Discovery days']],
       desc: {
         all: 'Most played tracks',
+        discovery: 'Days, when you discover your favourite tracks. ' +
+          'Under each day: tracks with ' + DISCOVERY_MIN_PLAYS +
+          '+ plays first heard that day, sorted by plays; ' +
+          'days sorted by the total plays of those tracks.',
         dynamics: D.dyn_label ? 'first ' + D.track_dyn_n + ' listenings' :
           'Each line: first play (green dot) → ' + D.track_dyn_n +
           'th play (white dot). Tracks with fewer than ' + D.track_dyn_n +
           ' plays show only the first dot.'
       },
-      panes: { all: tracksview, dynamics: tracksdyn },
-      render: { all: renderTracks, dynamics: renderTrackDyn }
+      panes: { all: tracksview, dynamics: tracksdyn,
+               discovery: discdays },
+      render: { all: renderTracks, dynamics: renderTrackDyn,
+                discovery: renderDiscovery }
     },
     artists: {
       tabs: [['all', 'All'], ['dynamics', 'Dynamics']],
@@ -979,7 +1081,7 @@ if (D.general) {
       tabs: [['list', 'All'], ['year', 'By year']],
       desc: {
         list: 'Most played complete albums',
-        year: "Top: complete-album plays by release year. Below: artists sorted by total plays; dots show their plays per year (shared year axis). Hover an artist or a dot to see its albums and its share in the bars."
+        year: "Top: complete-album plays by release year. Below: artists sorted by total plays; dots show their plays per year (shared year axis). Hover or tap an artist or a dot to see its albums and its share in the bars."
       },
       panes: { list: albumlist, year: chart },
       render: { list: renderAlbumList, year: () => {} }
@@ -987,8 +1089,8 @@ if (D.general) {
   };
   const subState = { general: 'all', tracks: 'all', artists: 'all',
                      albums: 'list' };
-  const ALLPANES = [generalview, tracksview, tracksdyn, statsview, artistsdyn,
-                    albumlist, chart];
+  const ALLPANES = [generalview, tracksview, tracksdyn, discdays, statsview,
+                    artistsdyn, albumlist, chart];
 
   function showSub(v, key) {
     subState[v] = key;
@@ -998,7 +1100,7 @@ if (D.general) {
     ALLPANES.forEach(p => { p.hidden = true; });
     cfg.panes[key].hidden = false;
     if (D.hide_subtitle) {
-      if (key === 'dynamics') {
+      if (key === 'dynamics' || key === 'discovery') {
         viewdesc.style.display = '';
         viewdesc.textContent = cfg.desc[key];
       } else {
