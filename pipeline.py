@@ -2,11 +2,12 @@ import sys
 import time
 import traceback
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 import psycopg2
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
+from spotipy.exceptions import SpotifyException
 from dotenv import load_dotenv
 import os
 
@@ -47,7 +48,7 @@ def get_spotify_client():
         client_secret=os.getenv("SPOTIFY_CLIENT_SECRET"),
         redirect_uri=os.getenv("SPOTIFY_REDIRECT_URI"),
         scope="user-read-recently-played"
-    ))
+    ), retries=0, status_retries=0)
 
 
 def normalize_release_date(date_str):
@@ -60,6 +61,50 @@ def normalize_release_date(date_str):
     if len(date_str) == 4 and date_str.isdigit():
         return f"{date_str}-01-01"
     return None
+
+
+COOLDOWN_FILE = Path(__file__).resolve().parent / "api_cooldown.json"
+COOLDOWN_HOURS = 24
+
+
+def read_cooldown():
+    """Возвращает datetime, до которого API в кулдауне (или None)."""
+    try:
+        if COOLDOWN_FILE.exists():
+            data = json.loads(COOLDOWN_FILE.read_text(encoding="utf-8"))
+            return datetime.fromisoformat(data.get("until"))
+    except Exception:
+        pass
+    return None
+
+
+def write_cooldown(until):
+    """Записывает кулдаун до `until` (best-effort)."""
+    try:
+        COOLDOWN_FILE.write_text(
+            json.dumps({"until": until.isoformat()}), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def api_in_cooldown():
+    """True, если Spotify API в кулдауне (не дёргать)."""
+    until = read_cooldown()
+    return bool(until and datetime.now() < until)
+
+
+def is_429(e):
+    """True, если исключение — rate limit Spotify (429)."""
+    if isinstance(e, SpotifyException) and getattr(e, "http_status", None) == 429:
+        return True
+    return "429" in str(e)
+
+
+def mark_api_limited():
+    """Записывает кулдаун на сутки (вызывается при 429)."""
+    until = datetime.now() + timedelta(hours=COOLDOWN_HOURS)
+    write_cooldown(until)
+    print(f"[cooldown] Spotify API в кулдауне до {until:%Y-%m-%d %H:%M:%S}")
 
 
 def step_import_json(conn):
@@ -195,6 +240,10 @@ def fill_albums_from_parquet(conn):
 
 def step_collect_spotify(conn):
     """Сбор последних 50 прослушанных треков из Spotify API."""
+    if api_in_cooldown():
+        print("[collect] Spotify API в кулдауне, пропуск")
+        return
+
     try:
         sp = get_spotify_client()
     except Exception as e:
@@ -204,6 +253,8 @@ def step_collect_spotify(conn):
     try:
         results = sp.current_user_recently_played(limit=50)
     except Exception as e:
+        if is_429(e):
+            mark_api_limited()
         print(f"[collect] Ошибка Spotify API: {e}")
         return
 
@@ -299,6 +350,10 @@ def _json_track_ids(folders):
 def sync_tracks_min(conn, sp, json_folders=None):
     """Дописывает в tracks_min связи трек→альбом для непокрытых треков
     (источники: listening_events + JSON) и при необходимости — альбомы в albums_min."""
+    if api_in_cooldown():
+        print("[sync-tracks] Spotify API в кулдауне, пропуск")
+        return
+
     folders = json_folders or [DATA_FOLDER]
 
     cur = conn.cursor()
@@ -332,17 +387,22 @@ def sync_tracks_min(conn, sp, json_folders=None):
             aid = sp.track(tid)["album"]["id"]
             links.append((tid, aid))
             album_ids.add(aid)
-        except Exception:
+        except Exception as e:
             errors += 1
+            if is_429(e):
+                mark_api_limited()
+                break
         time.sleep(0.5)
 
-    con.execute("CREATE TABLE aid(id VARCHAR)")
-    con.executemany("INSERT INTO aid VALUES (?)", [(a,) for a in album_ids])
     al_dir = ALBUMS_MIN_DIR.replace(chr(92), "/")
-    need_album = [r[0] for r in con.execute(f"""
-        SELECT a.id FROM aid a
-        WHERE NOT EXISTS (SELECT 1 FROM read_parquet('{al_dir}/*.parquet') p WHERE p.id = a.id)
-    """).fetchall()]
+    need_album = []
+    if album_ids:
+        con.execute("CREATE TABLE aid(id VARCHAR)")
+        con.executemany("INSERT INTO aid VALUES (?)", [(a,) for a in album_ids])
+        need_album = [r[0] for r in con.execute(f"""
+            SELECT a.id FROM aid a
+            WHERE NOT EXISTS (SELECT 1 FROM read_parquet('{al_dir}/*.parquet') p WHERE p.id = a.id)
+        """).fetchall()]
 
     new_albums = []
     for aid in need_album:
@@ -354,8 +414,11 @@ def sync_tracks_min(conn, sp, json_folders=None):
                 print(f"[sync-tracks] у {aid} нет даты релиза ({raw!r}), пишу без неё")
             new_albums.append((aid, rd, info.get("release_date_precision"),
                                info.get("total_tracks")))
-        except Exception:
+        except Exception as e:
             errors += 1
+            if is_429(e):
+                mark_api_limited()
+                break
         time.sleep(0.5)
 
     if links:
@@ -379,6 +442,10 @@ def sync_tracks_min(conn, sp, json_folders=None):
 
 def step_enrich_spotify(conn):
     """Обогащение альбомов данными из Spotify API (дата, кол-во треков)."""
+    if api_in_cooldown():
+        print("[enrich-spotify] Spotify API в кулдауне, пропуск")
+        return
+
     try:
         sp = get_spotify_client()
     except Exception as e:
@@ -434,6 +501,9 @@ def step_enrich_spotify(conn):
             updated += 1
         except Exception as e:
             conn.rollback()
+            if is_429(e):
+                mark_api_limited()
+                break
 
         time.sleep(0.5)
 
@@ -525,6 +595,140 @@ def step_enrich_musicbrainz(conn):
     print(f"[enrich-mb] Обновлено: {updated}")
 
 
+MB_USER_AGENT = "MusicDiary/1.0 (https://github.com/SimeonStylites/musicdiary)"
+MB_PAUSE = 1.5
+MB_FAIL = object()
+_mb_last = [0.0]
+
+
+def _mb_get_json(url, params):
+    """GET к MusicBrainz с лимитом 1 запрос/сек. Возвращает dict, None или MB_FAIL."""
+    import requests
+
+    headers = {"User-Agent": MB_USER_AGENT, "Accept": "application/json"}
+    for attempt in range(4):
+        wait = MB_PAUSE - (time.monotonic() - _mb_last[0])
+        if wait > 0:
+            time.sleep(wait)
+        try:
+            r = requests.get(url, params=params, headers=headers, timeout=30)
+            _mb_last[0] = time.monotonic()
+            if r.status_code == 200:
+                return r.json()
+            print(f"[enrich-genres] HTTP {r.status_code}, попытка {attempt + 1}")
+            if r.status_code in (429, 500, 502, 503, 504):
+                delay = 5 + 5 * attempt
+                reset = r.headers.get("X-RateLimit-Reset")
+                try:
+                    delay = min(delay, max(1.5, int(reset) - time.time() + 0.5))
+                except (TypeError, ValueError):
+                    pass
+                time.sleep(delay)
+                continue
+            return MB_FAIL
+        except Exception as e:
+            _mb_last[0] = time.monotonic()
+            print(f"[enrich-genres] {type(e).__name__}, попытка {attempt + 1}")
+            time.sleep(5 + 5 * attempt)
+    return MB_FAIL
+
+
+def _norm_artist_name(name):
+    import unicodedata
+
+    s = unicodedata.normalize("NFKC", name or "").casefold()
+    return "".join(ch for ch in s if ch.isalnum())
+
+
+def search_artist_mbid(artist_name):
+    """Ищет mbid по имени или алиасу. None — уверенного совпадения нет, MB_FAIL — сбой сети."""
+    data = _mb_get_json(
+        "https://musicbrainz.org/ws/2/artist",
+        {"query": f'artist:"{artist_name.replace(chr(34), "")}"', "fmt": "json", "limit": 3},
+    )
+    if data is MB_FAIL:
+        return MB_FAIL
+    n = _norm_artist_name(artist_name)
+    for a in data.get("artists") or []:
+        if _norm_artist_name(a.get("name")) == n:
+            return a["id"]
+        for alias in a.get("aliases") or []:
+            if _norm_artist_name(alias.get("name")) == n:
+                return a["id"]
+    return None
+
+
+def get_artist_genres(artist_mbid):
+    """Жанры артиста из MusicBrainz. Список пуст, если жанров нет; MB_FAIL при сбое сети."""
+    data = _mb_get_json(
+        f"https://musicbrainz.org/ws/2/artist/{artist_mbid}",
+        {"inc": "genres", "fmt": "json"},
+    )
+    if data is MB_FAIL:
+        return MB_FAIL
+    return [g["name"] for g in (data.get("genres") or []) if g.get("name")]
+
+
+def step_enrich_genres(conn):
+    """Добирает mbid и жанры артистов с прослушиваниями из MusicBrainz."""
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT ar.artist_id, ar.artist_name, ar.mbid,
+               (SELECT count(*) FROM listening_events le
+                JOIN albums a ON a.album_id = le.album_id
+                WHERE a.artist_id = ar.artist_id) AS plays
+        FROM artists ar
+        WHERE (ar.mbid IS NULL OR (ar.mbid <> '' AND ar.genre IS NULL))
+          AND EXISTS (SELECT 1 FROM albums a
+                      JOIN listening_events le ON le.album_id = a.album_id
+                      WHERE a.artist_id = ar.artist_id)
+        ORDER BY plays DESC
+        LIMIT 200
+    """)
+    artists = cur.fetchall()
+    cur.close()
+
+    if not artists:
+        print("[enrich-genres] Все артисты с прослушиваниями уже обработаны")
+        return
+
+    print(f"[enrich-genres] Обработка {len(artists)} артистов...")
+    updated = no_mbid = no_genre = failed = 0
+    for artist_id, artist_name, mbid, _ in artists:
+        if mbid is None:
+            mbid = search_artist_mbid(artist_name)
+            if mbid is MB_FAIL:
+                failed += 1
+                print(f"[enrich-genres] {artist_name}: поиск не удался")
+                continue
+            if not mbid:
+                cur = conn.cursor()
+                cur.execute("UPDATE artists SET mbid = '' WHERE artist_id = %s", (artist_id,))
+                conn.commit()
+                cur.close()
+                no_mbid += 1
+                continue
+            cur = conn.cursor()
+            cur.execute("UPDATE artists SET mbid = %s WHERE artist_id = %s", (mbid, artist_id))
+            conn.commit()
+            cur.close()
+        genres = get_artist_genres(mbid)
+        if genres is MB_FAIL:
+            failed += 1
+            print(f"[enrich-genres] {artist_name}: жанры не получены")
+            continue
+        cur = conn.cursor()
+        cur.execute("UPDATE artists SET genre = %s WHERE artist_id = %s",
+                    (", ".join(genres)[:2000] if genres else "", artist_id))
+        conn.commit()
+        cur.close()
+        updated += 1
+        no_genre += 0 if genres else 1
+
+    print(f"[enrich-genres] Обновлено: {updated} (без жанров в MusicBrainz: {no_genre}, "
+          f"не найдено: {no_mbid}, ошибок: {failed})")
+
+
 def step_export_csv(conn):
     """Экспорт полностью прослушанных альбомов в CSV."""
     import pandas as pd
@@ -592,6 +796,11 @@ def step_generate_dashboard(conn=None):
         JOIN artists ar ON ar.artist_id = a.artist_id
     """)
     rows = cur.fetchall()
+    cur.close()
+
+    cur = conn.cursor()
+    cur.execute("SELECT artist_name, genre FROM artists")
+    genres = {name: genre for name, genre in cur.fetchall()}
     cur.close()
 
     events = []
@@ -673,6 +882,38 @@ def step_generate_dashboard(conn=None):
          for t, c in tplays.items() if c >= MIN_TRACK_PLAYS),
         key=lambda x: (-x["plays"], x["name"].lower()))
 
+    # Tracks by release year (same axis as albums: year of release)
+    track_year = {}         # artist -> {year: plays}
+    track_year_tracks = {}  # artist -> {year: {track_id: plays}}
+    track_totals = Counter()
+    for e in events:
+        if e["release_date"] is None:
+            continue
+        y = e["release_date"].year
+        a = e["artist_name"]
+        track_year.setdefault(a, Counter())[y] += 1
+        track_year_tracks.setdefault(a, {}).setdefault(
+            y, Counter())[e["track_id"]] += 1
+        track_totals[a] += 1
+
+    track_years = sorted({y for d in track_year.values() for y in d})
+    track_plays_by_year = Counter(
+        {y: sum(d[y] for d in track_year.values() if y in d)
+         for y in track_years})
+    keep = {a for a, c in track_totals.items() if c >= MIN_TRACK_PLAYS}
+    track_artists = sorted(keep, key=lambda a: (-track_totals[a], a.lower()))
+    track_artist_year = {a: {str(y): int(c) for y, c in track_year[a].items()}
+                         for a in keep}
+    track_artist_year_tracks = {}
+    for a in keep:
+        yd = track_year_tracks[a]
+        tayt = {}
+        for y, tc in yd.items():
+            tayt[str(y)] = sorted(
+                ({"name": tinfo[t][0], "plays": c} for t, c in tc.items()),
+                key=lambda x: (-x["plays"], x["name"].lower()))
+        track_artist_year_tracks[a] = tayt
+
     t0 = min(e["epoch"] for e in events)
     t1 = max(e["epoch"] for e in events)
 
@@ -724,11 +965,19 @@ def step_generate_dashboard(conn=None):
         "artist_year_albums": {a: artist_year_albums[a] for a in artists},
         "artist_totals": {a: int(artist_totals[a]) for a in artists},
         "general": {"artists": sorted(
-            ({"name": a, "plays": sum(x["plays"] for x in lst), "albums": lst}
+            ({"name": a, "plays": sum(x["plays"] for x in lst), "albums": lst,
+              "genre": genres.get(a)}
              for a, lst in gen.items()),
             key=lambda x: (-x["plays"], x["name"].lower()))},
         "tracks": top_tracks,
         "full_albums": full_albums,
+        "track_years": track_years,
+        "track_plays_by_year": {str(k): int(v)
+                                for k, v in track_plays_by_year.items()},
+        "track_artists": track_artists,
+        "track_artist_year": track_artist_year,
+        "track_artist_totals": {a: int(track_totals[a]) for a in track_artists},
+        "track_artist_year_tracks": track_artist_year_tracks,
         "time_range": {"min": t0, "max": t1},
         "artist_dynamics": artist_dynamics,
         "track_dynamics": track_dynamics,
@@ -826,6 +1075,7 @@ def main():
         "collect": step_collect_spotify,
         "enrich-spotify": step_enrich_spotify,
         "enrich-mb": step_enrich_musicbrainz,
+        "enrich-genres": step_enrich_genres,
         "export": step_export_csv,
         "dashboard": step_generate_dashboard,
         "push": step_push,

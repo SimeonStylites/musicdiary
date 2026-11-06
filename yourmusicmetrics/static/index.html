@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your Music Metrics</title>
+<style>
+  :root { --bg: #121212; --panel: #181818; --green: #1db954; --muted: #b3b3b3; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh;
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: #fff; display: flex; align-items: center;
+    justify-content: center; padding: 24px;
+  }
+  .card {
+    background: var(--panel); border-radius: 16px; padding: 40px 48px;
+    max-width: 640px; width: 100%; box-shadow: 0 12px 40px rgba(0,0,0,.4);
+  }
+  h1 { margin: 0 0 8px; font-size: 28px; letter-spacing: -.5px; }
+  p.sub { color: var(--muted); margin: 0 0 28px; line-height: 1.5; font-size: 14px; }
+  ol li { font-size: 14px; color: var(--muted); line-height: 1.6; }
+  a { color: var(--green); }
+  .drop {
+    margin-top: 24px; border: 2px dashed #444; border-radius: 12px;
+    padding: 32px 20px; text-align: center; cursor: pointer;
+    transition: border-color .15s, background .15s; font-size: 14px; color: var(--muted);
+  }
+  .drop.drag { border-color: var(--green); background: rgba(29,185,84,.06); color: #fff; }
+  input[type=file] { display: none; }
+  .btn {
+    margin-top: 16px; width: 100%; padding: 14px; border: 0; border-radius: 24px;
+    background: var(--green); color: #000; font-size: 16px; font-weight: 700;
+    cursor: pointer; transition: filter .15s;
+  }
+  .btn:disabled { filter: grayscale(.6); cursor: default; }
+  #bar {
+    margin-top: 14px; height: 8px; background: #2a2a2a; border-radius: 4px;
+    overflow: hidden; display: none;
+  }
+  #barfill {
+    height: 100%; width: 0; background: var(--green); border-radius: 4px;
+    transition: width .3s ease;
+  }
+  #status { margin-top: 14px; font-size: 13px; color: var(--muted); text-align: center; min-height: 18px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Your Music Metrics</h1>
+  <p class="sub">Upload your Spotify Extended Streaming History to see some metrics.</p>
+  <ol>
+    <li>Go to <a href="https://www.spotify.com/account/privacy/" target="_blank" rel="noopener">spotify.com/account/privacy</a>
+        and sign in.</li>
+    <li>Scroll down to <strong>Download your data</strong>.
+        Tick <strong>Extended streaming history</strong> only.
+        Leave <strong>Account data</strong> and <strong>Technical log information</strong> unticked.
+        Then click <strong>Request</strong> next to the selected item.</li>
+    <li>Spotify will <strong>immediately send you an email asking to confirm your request</strong>.
+        Open that email and click the confirmation link — the archive is not prepared until you do.
+        3–4 days later a <strong>second email</strong> arrives with the download link. Save the ZIP —
+        it contains files like <code>Streaming_History_Audio_2025_1.json</code>.</li>
+    <li>Drop the ZIP (or a few of those JSON files) below.</li>
+  </ol>
+  <form id="form">
+    <div class="drop" id="drop">Drop a ZIP or one or more JSON files here,<br>or click to choose files</div>
+    <input type="file" id="file" accept=".zip,.json" multiple>
+    <button class="btn" id="btn" disabled>Show my stats</button>
+  </form>
+  <div id="bar"><div id="barfill"></div></div>
+  <div id="status"></div>
+</div>
+<script>
+  const drop = document.getElementById('drop');
+  const input = document.getElementById('file');
+  const btn = document.getElementById('btn');
+  const status = document.getElementById('status');
+  const bar = document.getElementById('bar');
+  const barfill = document.getElementById('barfill');
+
+  let selected = [];
+
+  function updateList() {
+    drop.classList.remove('drag');
+    if (!selected.length) { btn.disabled = true; return; }
+    drop.innerHTML = selected
+      .map(f => f.name + ' (' + (f.size / 1024 / 1024).toFixed(1) + ' MB)')
+      .join('<br>');
+    btn.disabled = false;
+  }
+
+  drop.addEventListener('click', () => input.click());
+  drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('drag'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('drag'));
+  drop.addEventListener('drop', e => {
+    e.preventDefault();
+    if (e.dataTransfer.files.length) {
+      selected = Array.from(e.dataTransfer.files);
+      updateList();
+    }
+  });
+  input.addEventListener('change', () => {
+    if (input.files.length) { selected = Array.from(input.files); updateList(); }
+  });
+
+  // stages of the server stream → bar position
+  const STAGE_PCT = { parse: 55, analyze: 75, render: 95, done: 100 };
+  let t0 = 0, tick = null, doneHtml = null;
+
+  function setStage(name) {
+    if (t0) {
+      const s = ((performance.now() - t0) / 1000).toFixed(1);
+      const label = name === 'parse' ? 'Parsing…'
+        : name === 'analyze' ? 'Analyzing…'
+        : name === 'render' ? 'Rendering…' : 'Done';
+      status.textContent = label + ' ' + s + ' s';
+    }
+  }
+
+  function startTimer(lastStage) {
+    clearInterval(tick);
+    tick = setInterval(() => setStage(lastStage), 100);
+  }
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (!selected.length) return;
+    const fd = new FormData();
+    selected.forEach(f => fd.append('files', f));
+    btn.disabled = true;
+    bar.style.display = 'block';
+    barfill.style.width = '0%';
+    t0 = performance.now();
+    doneHtml = null;
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/analyze');
+
+    xhr.upload.onprogress = (ev) => {
+      if (ev.lengthComputable) {
+        const pct = Math.round(ev.loaded / ev.total * 40);
+        barfill.style.width = pct + '%';
+        status.textContent = 'Uploading… ' + Math.round(ev.loaded / ev.total * 100) + '%';
+      }
+    };
+
+    let buf = '';
+    let lastStage = 'upload';
+    xhr.onprogress = () => {
+      buf = xhr.responseText;
+      const lines = buf.split('\n');
+      for (const line of lines.slice(0, -1)) {
+        if (!line.trim()) continue;
+        let ev;
+        try { ev = JSON.parse(line); } catch { continue; }
+        if (ev.stage === 'error') {
+          clearInterval(tick);
+          status.textContent = 'Error: ' + ev.detail;
+          btn.disabled = false;
+          return;
+        }
+        if (ev.stage === 'done') { doneHtml = ev.html; }
+        lastStage = ev.stage;
+        barfill.style.width = (STAGE_PCT[ev.stage] || 0) + '%';
+        setStage(ev.stage);
+        startTimer(ev.stage);
+      }
+    };
+
+    xhr.onload = () => {
+      clearInterval(tick);
+      if (xhr.status !== 200) {
+        let detail = 'HTTP ' + xhr.status;
+        try { detail = JSON.parse(xhr.responseText).detail || detail; } catch {}
+        status.textContent = 'Error: ' + detail;
+        btn.disabled = false;
+        return;
+      }
+      // leftover lines that didn't end with \n
+      for (const line of buf.split('\n')) {
+        if (!line.trim()) continue;
+        let ev;
+        try { ev = JSON.parse(line); } catch { continue; }
+        if (ev.stage === 'done') doneHtml = ev.html;
+      }
+      if (doneHtml) {
+        barfill.style.width = '100%';
+        status.textContent = 'Done';
+        document.open(); document.write(doneHtml); document.close();
+      } else if (!status.textContent.startsWith('Error')) {
+        status.textContent = 'Error: empty response';
+        btn.disabled = false;
+      }
+    };
+    xhr.onerror = () => {
+      clearInterval(tick);
+      status.textContent = 'Network error';
+      btn.disabled = false;
+    };
+    xhr.send(fd);
+  });
+</script>
+</body>
+</html>
