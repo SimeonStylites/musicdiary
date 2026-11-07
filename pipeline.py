@@ -882,38 +882,6 @@ def step_generate_dashboard(conn=None):
          for t, c in tplays.items() if c >= MIN_TRACK_PLAYS),
         key=lambda x: (-x["plays"], x["name"].lower()))
 
-    # Tracks by release year (same axis as albums: year of release)
-    track_year = {}         # artist -> {year: plays}
-    track_year_tracks = {}  # artist -> {year: {track_id: plays}}
-    track_totals = Counter()
-    for e in events:
-        if e["release_date"] is None:
-            continue
-        y = e["release_date"].year
-        a = e["artist_name"]
-        track_year.setdefault(a, Counter())[y] += 1
-        track_year_tracks.setdefault(a, {}).setdefault(
-            y, Counter())[e["track_id"]] += 1
-        track_totals[a] += 1
-
-    track_years = sorted({y for d in track_year.values() for y in d})
-    track_plays_by_year = Counter(
-        {y: sum(d[y] for d in track_year.values() if y in d)
-         for y in track_years})
-    keep = {a for a, c in track_totals.items() if c >= MIN_TRACK_PLAYS}
-    track_artists = sorted(keep, key=lambda a: (-track_totals[a], a.lower()))
-    track_artist_year = {a: {str(y): int(c) for y, c in track_year[a].items()}
-                         for a in keep}
-    track_artist_year_tracks = {}
-    for a in keep:
-        yd = track_year_tracks[a]
-        tayt = {}
-        for y, tc in yd.items():
-            tayt[str(y)] = sorted(
-                ({"name": tinfo[t][0], "plays": c} for t, c in tc.items()),
-                key=lambda x: (-x["plays"], x["name"].lower()))
-        track_artist_year_tracks[a] = tayt
-
     t0 = min(e["epoch"] for e in events)
     t1 = max(e["epoch"] for e in events)
 
@@ -971,13 +939,6 @@ def step_generate_dashboard(conn=None):
             key=lambda x: (-x["plays"], x["name"].lower()))},
         "tracks": top_tracks,
         "full_albums": full_albums,
-        "track_years": track_years,
-        "track_plays_by_year": {str(k): int(v)
-                                for k, v in track_plays_by_year.items()},
-        "track_artists": track_artists,
-        "track_artist_year": track_artist_year,
-        "track_artist_totals": {a: int(track_totals[a]) for a in track_artists},
-        "track_artist_year_tracks": track_artist_year_tracks,
         "time_range": {"min": t0, "max": t1},
         "artist_dynamics": artist_dynamics,
         "track_dynamics": track_dynamics,

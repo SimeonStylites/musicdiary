@@ -403,7 +403,6 @@
   <div class="chart" id="statsview" hidden></div>
   <div class="chart" id="artistsdyn" hidden></div>
   <div class="chart" id="albumlist" hidden></div>
-  <div class="chart" id="trackyear" hidden></div>
   <div class="chart" id="chart"></div>
 </div>
 <div class="tooltip" id="tooltip"></div>
@@ -671,7 +670,6 @@ if (D.general) {
   const statsview = document.getElementById('statsview');
   const artistsdyn = document.getElementById('artistsdyn');
   const albumlist = document.getElementById('albumlist');
-  const trackyear = document.getElementById('trackyear');
   const viewdesc = document.getElementById('viewdesc');
   if (D.hide_subtitle) viewdesc.style.display = 'none';
   tabs.hidden = false;
@@ -952,153 +950,6 @@ if (D.general) {
     albumlist.scrollIntoView({ block: 'start' });
   }
 
-  // ----- Tracks: by year -----
-  function buildTrackYear() {
-    if (trackyear.dataset.built) return;
-    trackyear.dataset.built = '1';
-    trackyear.innerHTML = '';
-
-    const years = D.track_years || [];
-    const totals = D.track_plays_by_year || {};
-    const maxTotal = Math.max(1, ...years.map(y => totals[y] || 0));
-    const barCols = [];
-    const yearLabels = [];
-    const rows = [];
-
-    const headerRow = document.createElement('div');
-    headerRow.className = 'dash-header-row';
-    const headName = document.createElement('div');
-    headName.className = 'name-cell';
-    headName.textContent = 'Artists';
-    headerRow.appendChild(headName);
-    const headerYears = document.createElement('div');
-    headerYears.className = 'years-cell';
-    const barsRow = document.createElement('div');
-    barsRow.className = 'bars-row';
-    years.forEach(y => {
-      const col = document.createElement('div');
-      col.className = 'bar-col';
-      const val = document.createElement('div');
-      val.className = 'bar-value';
-      val.textContent = totals[y] ? totals[y] : '';
-      const track = document.createElement('div');
-      track.className = 'bar-track';
-      const h = totals[y] ? Math.max((totals[y] / maxTotal) * USEFUL_H, 3) : 0;
-      track.style.height = h + 'px';
-      const share = document.createElement('div');
-      share.className = 'bar-share';
-      share.dataset.year = y;
-      track.appendChild(share);
-      col.appendChild(val);
-      col.appendChild(track);
-      barsRow.appendChild(col);
-      barCols.push({ col, track, share, year: y });
-    });
-    const labelsRow = document.createElement('div');
-    labelsRow.className = 'year-labels';
-    years.forEach(y => {
-      const lbl = document.createElement('div');
-      lbl.className = 'year-label';
-      lbl.textContent = String(y).slice(-2);
-      labelsRow.appendChild(lbl);
-      yearLabels.push(lbl);
-    });
-    headerYears.appendChild(barsRow);
-    headerYears.appendChild(labelsRow);
-    headerRow.appendChild(headerYears);
-    trackyear.appendChild(headerRow);
-
-    const artistsBox = document.createElement('div');
-    artistsBox.id = 'trackyear-artists';
-    trackyear.appendChild(artistsBox);
-
-    function clearHighlight() {
-      document.body.classList.remove('hov');
-      artistsBox.querySelectorAll('.artist-row.active')
-        .forEach(r => r.classList.remove('active'));
-      yearLabels.forEach(l => l.classList.remove('year-hit'));
-      barCols.forEach(({ col, track, share }) => {
-        col.classList.remove('hit');
-        track.classList.remove('hit');
-        share.style.height = '0px';
-      });
-    }
-
-    function highlight(a) {
-      clearHighlight();
-      document.body.classList.add('hov');
-      const ay = D.track_artist_year[a] || {};
-      rows.forEach(r => r.classList.toggle('active', r.dataset.artist === a));
-      yearLabels.forEach((lbl, i) =>
-        lbl.classList.toggle('year-hit', !!(ay[years[i]] || 0)));
-      barCols.forEach(({ col, track, share, year: y }) => {
-        const total = totals[y] || 0;
-        const v = ay[y] || 0;
-        if (v && total) {
-          col.classList.add('hit');
-          const trackH = track.getBoundingClientRect().height;
-          share.style.height = Math.round((v / total) * trackH) + 'px';
-        } else {
-          col.classList.remove('hit');
-          share.style.height = '0px';
-        }
-      });
-    }
-
-    (D.track_artists || []).forEach(a => {
-      const row = document.createElement('div');
-      row.className = 'artist-row';
-      row.dataset.artist = a;
-
-      const nameCell = document.createElement('div');
-      nameCell.className = 'name-cell';
-      const nm = document.createElement('span');
-      nm.className = 'nm';
-      nm.textContent = a;
-      const tot = document.createElement('span');
-      tot.className = 'tot';
-      tot.textContent = D.track_artist_totals[a];
-      nameCell.appendChild(nm);
-      nameCell.appendChild(tot);
-
-      const dotsRow = document.createElement('div');
-      dotsRow.className = 'dots-row';
-      const ay = D.track_artist_year[a] || {};
-      const maxA = Math.max(1, ...Object.values(ay));
-
-      years.forEach(y => {
-        const cell = document.createElement('div');
-        cell.className = 'dot-cell';
-        const svg = document.createElementNS(SVGNS, 'svg');
-        const v = ay[y] || 0;
-        const r = v ? Math.max(3, (v / maxA) * 8) : 0;
-        svg.setAttribute('width', '16');
-        svg.setAttribute('height', '16');
-        const c = document.createElementNS(SVGNS, 'circle');
-        c.setAttribute('cx', '8');
-        c.setAttribute('cy', '8');
-        c.setAttribute('r', r);
-        svg.appendChild(c);
-        cell.appendChild(svg);
-        dotsRow.appendChild(cell);
-      });
-
-      row.appendChild(nameCell);
-      row.appendChild(dotsRow);
-      rows.push(row);
-      artistsBox.appendChild(row);
-    });
-
-    rows.forEach(r => {
-      r.addEventListener('mouseenter', () => highlight(r.dataset.artist));
-      r.addEventListener('click', () => {
-        if (r.classList.contains('active')) clearHighlight();
-        else highlight(r.dataset.artist);
-      });
-    });
-    artistsBox.addEventListener('mouseleave', clearHighlight);
-  }
-
   // ----- Dynamics (shared timeline) -----
   const T0 = D.time_range ? D.time_range.min : 0;
   const T1 = D.time_range ? D.time_range.max : 1;
@@ -1196,11 +1047,10 @@ if (D.general) {
       render: { all: renderGeneral }
     },
     tracks: {
-      tabs: [['all', 'All'], ['year', 'By year'],
+      tabs: [['all', 'All'],
              ['dynamics', 'Dynamics'], ['discovery', 'Discovery days']],
       desc: {
         all: 'Most played tracks',
-        year: 'Top: track plays by release year. Below: artists sorted by total plays; dots show their plays per year',
         discovery: 'Days, when you discover your favourite tracks. ' +
           'Under each day: tracks with ' + DISCOVERY_MIN_PLAYS +
           '+ plays first heard that day.',
@@ -1209,9 +1059,9 @@ if (D.general) {
           'th play (white dot). Tracks with fewer than ' + D.track_dyn_n +
           ' plays show only the first dot.'
       },
-      panes: { all: tracksview, year: trackyear, dynamics: tracksdyn,
+      panes: { all: tracksview, dynamics: tracksdyn,
                discovery: discdays },
-      render: { all: renderTracks, year: buildTrackYear,
+      render: { all: renderTracks,
                 dynamics: renderTrackDyn, discovery: renderDiscovery }
     },
     artists: {
@@ -1239,7 +1089,7 @@ if (D.general) {
   const subState = { general: 'all', tracks: 'all', artists: 'all',
                      albums: 'list' };
   const ALLPANES = [generalview, tracksview, tracksdyn, discdays, statsview,
-                    artistsdyn, albumlist, trackyear, chart];
+                    artistsdyn, albumlist, chart];
 
   function showSub(v, key) {
     subState[v] = key;
