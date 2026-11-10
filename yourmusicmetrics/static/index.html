@@ -43,6 +43,55 @@
     transition: width .3s ease;
   }
   #status { margin-top: 14px; font-size: 13px; color: var(--muted); text-align: center; min-height: 18px; }
+  #race {
+    margin-top: 18px; position: relative; display: none;
+  }
+  #racedate {
+    margin-top: 6px; font-size: 12px; color: var(--muted);
+    text-align: center; min-height: 16px; font-variant-numeric: tabular-nums;
+    display: none;
+  }
+  .race-row {
+    position: absolute; left: 0; right: 0; height: 42px;
+    display: flex; align-items: center; gap: 10px;
+    transition: top .5s cubic-bezier(.2,.8,.2,1), opacity .3s;
+  }
+  .race-row.dim { opacity: .35; }
+  .race-rank {
+    flex: 0 0 22px; text-align: right;
+    color: var(--muted); font-size: 12px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .race-meta { flex: 1 1 42%; min-width: 0; }
+  .race-name {
+    font-size: 13px; font-weight: 600;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .race-artist {
+    font-size: 11px; color: var(--muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .race-track {
+    flex: 1 1 auto; min-width: 40px; height: 20px;
+    background: #2a2a2a; border-radius: 4px; overflow: hidden;
+  }
+  .race-fill {
+    height: 100%; width: 0;
+    background: linear-gradient(90deg, var(--green), #1ed760);
+    border-radius: 4px; transition: width .4s ease;
+  }
+  .race-plays {
+    flex: 0 0 56px; text-align: right;
+    color: var(--green); font-weight: 700; font-size: 13px;
+    font-variant-numeric: tabular-nums;
+  }
+  #skipbtn {
+    margin-top: 14px; width: 100%; padding: 12px;
+    border: 1px solid #444; border-radius: 24px;
+    background: transparent; color: var(--muted);
+    font-size: 14px; font-weight: 600; font-family: inherit; cursor: pointer;
+  }
+  #skipbtn:hover { color: #fff; border-color: #888; }
 </style>
 </head>
 <body>
@@ -68,6 +117,9 @@
     <button class="btn" id="btn" disabled>Show my stats</button>
   </form>
   <div id="bar"><div id="barfill"></div></div>
+  <div id="racedate"></div>
+  <div id="race"></div>
+  <button id="skipbtn" hidden>Skip ⏭</button>
   <div id="status"></div>
 </div>
 <script>
@@ -105,12 +157,18 @@
 
   // stages of the server stream → bar position
   const STAGE_PCT = { parse: 55, analyze: 75, render: 95, done: 100 };
+  const RACE_DUR = 120000; // ~2 min, пока идёт обработка
+  const race = document.getElementById('race');
+  const racedate = document.getElementById('racedate');
+  const skipbtn = document.getElementById('skipbtn');
   let t0 = 0, tick = null, doneHtml = null;
+  let raceCtl = null, skipped = false, processed = 0;
 
   function setStage(name) {
     if (t0) {
       const s = ((performance.now() - t0) / 1000).toFixed(1);
       const label = name === 'parse' ? 'Parsing…'
+        : name === 'race' ? 'Crunching your data…'
         : name === 'analyze' ? 'Analyzing…'
         : name === 'render' ? 'Rendering…' : 'Done';
       status.textContent = label + ' ' + s + ' s';
@@ -122,6 +180,134 @@
     tick = setInterval(() => setStage(lastStage), 100);
   }
 
+  function startRace(frames) {
+    const ROW_H = 42;
+    let gmax = 1;
+    frames.forEach(f => f.top.forEach(t => { gmax = Math.max(gmax, t.plays); }));
+    const FRAME_MS = RACE_DUR / frames.length;
+
+    race.innerHTML = '';
+    race.style.height = (10 * ROW_H) + 'px';
+
+    const rows = new Map();
+    let timer = null, idx = 0;
+
+    function keyOf(t) { return t.name + '\u0000' + t.artist; }
+
+    function makeRow(t) {
+      const row = document.createElement('div');
+      row.className = 'race-row';
+      const rank = document.createElement('span');
+      rank.className = 'race-rank';
+      const meta = document.createElement('div');
+      meta.className = 'race-meta';
+      const name = document.createElement('div');
+      name.className = 'race-name';
+      name.textContent = t.name;
+      const artist = document.createElement('div');
+      artist.className = 'race-artist';
+      artist.textContent = t.artist;
+      meta.appendChild(name);
+      meta.appendChild(artist);
+      const track = document.createElement('div');
+      track.className = 'race-track';
+      const fill = document.createElement('div');
+      fill.className = 'race-fill';
+      track.appendChild(fill);
+      const plays = document.createElement('span');
+      plays.className = 'race-plays';
+      row.appendChild(rank);
+      row.appendChild(meta);
+      row.appendChild(track);
+      row.appendChild(plays);
+      race.appendChild(row);
+      return { row, rank, fill, plays };
+    }
+
+    function renderFrame(frame) {
+      const present = new Set();
+      frame.top.forEach((t, r) => {
+        const k = keyOf(t);
+        present.add(k);
+        let row = rows.get(k);
+        if (!row) { row = makeRow(t); rows.set(k, row); }
+        row.rank.textContent = r + 1;
+        row.row.style.top = (r * ROW_H) + 'px';
+        row.fill.style.width = (t.plays / gmax * 100) + '%';
+        row.plays.textContent = t.plays.toLocaleString('en-US');
+        row.row.classList.remove('dim');
+      });
+      for (const [k, row] of rows) {
+        if (!present.has(k)) {
+          row.row.classList.add('dim');
+          row.fill.style.width = '0';
+          setTimeout(() => { row.row.remove(); }, 400);
+          rows.delete(k);
+        }
+      }
+    }
+
+    function step() {
+      if (idx >= frames.length) { clearInterval(timer); timer = null; return; }
+      const f = frames[idx];
+      renderFrame(f);
+      racedate.textContent = f.t;
+      idx++;
+    }
+
+    race.style.display = 'block';
+    racedate.style.display = 'block';
+    skipbtn.hidden = false;
+    step();
+    timer = setInterval(step, FRAME_MS);
+
+    return {
+      finish() {
+        if (timer) { clearInterval(timer); timer = null; }
+        renderFrame(frames[frames.length - 1]);
+        racedate.textContent = frames[frames.length - 1].t;
+      },
+      stop() {
+        if (timer) { clearInterval(timer); timer = null; }
+      }
+    };
+  }
+
+  function handleStage(ev) {
+    if (ev.stage === 'error') {
+      clearInterval(tick);
+      if (raceCtl) { raceCtl.stop(); raceCtl = null; }
+      status.textContent = 'Error: ' + ev.detail;
+      btn.disabled = false;
+      return;
+    }
+    if (ev.stage === 'race') {
+      if (ev.frames && ev.frames.length && !raceCtl && !skipped) {
+        raceCtl = startRace(ev.frames);
+        bar.style.display = 'none';
+      }
+      setStage('race');
+      startTimer('race');
+      return;
+    }
+    if (ev.stage === 'done') { doneHtml = ev.html; }
+    barfill.style.width = (STAGE_PCT[ev.stage] || 0) + '%';
+    setStage(ev.stage);
+    startTimer(ev.stage);
+  }
+
+  skipbtn.addEventListener('click', () => {
+    skipped = true;
+    clearInterval(tick);
+    if (raceCtl) { raceCtl.stop(); raceCtl = null; }
+    race.style.display = 'none';
+    racedate.style.display = 'none';
+    skipbtn.hidden = true;
+    bar.style.display = 'block';
+    barfill.style.width = '60%';
+    status.textContent = 'Processing…';
+  });
+
   form.addEventListener('submit', (e) => {
     e.preventDefault();
     if (!selected.length) return;
@@ -130,6 +316,13 @@
     btn.disabled = true;
     bar.style.display = 'block';
     barfill.style.width = '0%';
+    race.style.display = 'none';
+    racedate.style.display = 'none';
+    racedate.textContent = '';
+    skipbtn.hidden = true;
+    raceCtl = null;
+    skipped = false;
+    processed = 0;
     t0 = performance.now();
     doneHtml = null;
 
@@ -145,30 +338,23 @@
     };
 
     let buf = '';
-    let lastStage = 'upload';
     xhr.onprogress = () => {
       buf = xhr.responseText;
       const lines = buf.split('\n');
-      for (const line of lines.slice(0, -1)) {
+      const complete = lines.length - 1;
+      for (let i = processed; i < complete; i++) {
+        const line = lines[i];
         if (!line.trim()) continue;
         let ev;
         try { ev = JSON.parse(line); } catch { continue; }
-        if (ev.stage === 'error') {
-          clearInterval(tick);
-          status.textContent = 'Error: ' + ev.detail;
-          btn.disabled = false;
-          return;
-        }
-        if (ev.stage === 'done') { doneHtml = ev.html; }
-        lastStage = ev.stage;
-        barfill.style.width = (STAGE_PCT[ev.stage] || 0) + '%';
-        setStage(ev.stage);
-        startTimer(ev.stage);
+        handleStage(ev);
       }
+      processed = complete;
     };
 
     xhr.onload = () => {
       clearInterval(tick);
+      if (raceCtl) { raceCtl.stop(); raceCtl = null; }
       if (xhr.status !== 200) {
         let detail = 'HTTP ' + xhr.status;
         try { detail = JSON.parse(xhr.responseText).detail || detail; } catch {}
@@ -177,7 +363,9 @@
         return;
       }
       // leftover lines that didn't end with \n
-      for (const line of buf.split('\n')) {
+      const lines = buf.split('\n');
+      for (let i = processed; i < lines.length; i++) {
+        const line = lines[i];
         if (!line.trim()) continue;
         let ev;
         try { ev = JSON.parse(line); } catch { continue; }
@@ -194,6 +382,7 @@
     };
     xhr.onerror = () => {
       clearInterval(tick);
+      if (raceCtl) { raceCtl.stop(); raceCtl = null; }
       status.textContent = 'Network error';
       btn.disabled = false;
     };

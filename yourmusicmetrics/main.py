@@ -104,6 +104,7 @@ async def analyze(request: Request, files: list[UploadFile] = File(...), fmt: st
         except ValueError as e:
             yield ev("error", detail=str(e))
             return
+        yield ev("race", frames=analyzer.race_frames(events, 120))
         yield ev("analyze")
         result = analyzer.analyze(events)
         if "error" in result:

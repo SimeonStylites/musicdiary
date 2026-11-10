@@ -97,6 +97,36 @@ def load_uploads(uploads):
     return events
 
 
+def race_frames(events, n_frames=120):
+    """Хронологический топ-10 по мере «сканирования» событий от старых к новым.
+
+    Каждый кадр — топ-10 по накопленным прослушиваниям на этот момент времени.
+    Считается только по ts/имени/артисту из JSON (мост track_id→album и Spotify
+    API не нужны), поэтому готов сразу после parse и не зависит от медленного
+    этапа analyze. Сервер отдаёт кадры браузеру, тот проигрывает их в реальном
+    времени, пока параллельно идёт мост/добор через API.
+    """
+    ev = sorted(events, key=lambda e: (e["ts"], e["track_id"]))
+    if not ev:
+        return []
+    step = max(1, len(ev) // n_frames)
+    counter = Counter()
+    info = {}
+    frames = []
+    for i, e in enumerate(ev):
+        counter[e["track_id"]] += 1
+        info.setdefault(e["track_id"], (e["track_name"], e["artist_name"]))
+        if (i + 1) % step == 0 or i == len(ev) - 1:
+            top = sorted(
+                counter.items(), key=lambda kv: (-kv[1], info[kv[0]][0].lower()))[:10]
+            frames.append({
+                "t": e["ts"].strftime("%Y-%m-%d"),
+                "top": [{"name": info[t][0], "artist": info[t][1], "plays": c}
+                        for t, c in top],
+            })
+    return frames
+
+
 def _read_bridge(track_ids):
     """map track_id → (album_id, release_date, total_tracks) из sqlite-индекса."""
     con = sqlite3.connect(TRACKS_IDX)
@@ -561,6 +591,7 @@ def analyze(events, use_api=True):
     data = {
         "title": "Your Music Metrics",
         "note": note,
+        "race": race_frames(events, 120),
         "years": years,
         "plays_by_year": {str(k): int(v) for k, v in by_year.items()},
         "artists": sorted(artists, key=lambda a: (-artists[a]["total"], a.lower())),
