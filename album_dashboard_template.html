@@ -380,36 +380,13 @@
     border-bottom: 1px solid #4a3d20;
     font-size: 13px;
   }
-  #racebtn {
-    margin-top: 12px;
-    background: transparent;
-    border: 1px solid var(--border);
-    color: var(--muted);
-    padding: 6px 16px;
-    border-radius: 999px;
-    font-size: 13px;
-    font-weight: 600;
-    font-family: inherit;
-    cursor: pointer;
+  .race-actions { margin: 0 0 12px; display: flex; gap: 10px; }
+  .race-actions button {
+    background: transparent; border: 1px solid var(--border);
+    color: var(--muted); padding: 6px 14px; border-radius: 999px;
+    font-size: 13px; font-weight: 600; font-family: inherit; cursor: pointer;
   }
-  #racebtn:hover { color: var(--text); border-color: var(--muted); }
-  #raceoverlay {
-    position: fixed; inset: 0; z-index: 1000;
-    background: rgba(0,0,0,.82);
-    display: flex; align-items: center; justify-content: center;
-    padding: 24px;
-  }
-  #raceoverlay[hidden] { display: none; }
-  #racepanel {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 28px 32px;
-    width: min(760px, 100%);
-    box-shadow: 0 12px 40px rgba(0,0,0,.6);
-  }
-  #racepanel h2 { margin: 0 0 4px; font-size: 18px; }
-  #racepanel .race-sub { margin: 0 0 12px; color: var(--muted); font-size: 13px; }
+  .race-actions button:hover { color: var(--text); border-color: var(--muted); }
   #racedate {
     margin: 0 0 8px; font-size: 12px; color: var(--muted);
     font-variant-numeric: tabular-nums;
@@ -449,15 +426,6 @@
     color: var(--green); font-weight: 700; font-size: 13px;
     font-variant-numeric: tabular-nums;
   }
-  #racepanel .race-actions {
-    margin-top: 22px; display: flex; gap: 10px; justify-content: flex-end;
-  }
-  .race-actions button {
-    background: transparent; border: 1px solid var(--border);
-    color: var(--muted); padding: 8px 16px; border-radius: 999px;
-    font-size: 13px; font-weight: 600; font-family: inherit; cursor: pointer;
-  }
-  .race-actions button:hover { color: var(--text); border-color: var(--muted); }
 </style>
 </head>
 <body>
@@ -469,9 +437,9 @@
     <button class="tab" data-view="tracks">Tracks</button>
     <button class="tab" data-view="artists">Artists</button>
     <button class="tab" data-view="albums">Albums</button>
+    <button class="tab" data-view="race" hidden>Replay race</button>
   </div>
   <div class="tabs subtabs" id="subtabs" hidden></div>
-  <button id="racebtn" hidden>▶ Replay race</button>
 </header>
 <div class="note-banner" id="notebanner" hidden></div>
 <div class="chart-wrap">
@@ -483,20 +451,16 @@
   <div class="chart" id="artistsdyn" hidden></div>
   <div class="chart" id="albumlist" hidden></div>
   <div class="chart" id="chart"></div>
-</div>
-<div class="tooltip" id="tooltip"></div>
-<div id="raceoverlay" hidden>
-  <div id="racepanel">
-    <h2>Top tracks race</h2>
-    <p class="race-sub">How your top 10 most played tracks evolved over time.</p>
-    <div id="racedate"></div>
-    <div id="racebox"></div>
+  <div class="chart" id="raceview" hidden>
     <div class="race-actions">
       <button id="race-skip">Skip ⏭</button>
-      <button id="race-close">✕ Close</button>
+      <button id="race-replay">↻ Replay</button>
     </div>
+    <div id="racedate"></div>
+    <div id="racebox"></div>
   </div>
 </div>
+<div class="tooltip" id="tooltip"></div>
 
 <script>
 const D = __DATA__;
@@ -1222,128 +1186,129 @@ if (D.general) {
 
   tabs.querySelectorAll('.tab').forEach(b =>
     b.addEventListener('click', () => showView(b.dataset.view)));
+
+  // ----- Replay race (fifth tab, only when race frames present) -----
+  if (D.race && D.race.length) {
+    const raceTab = document.querySelector('.tab[data-view="race"]');
+    const raceview = document.getElementById('raceview');
+    const racebox = document.getElementById('racebox');
+    const racedate = document.getElementById('racedate');
+    const raceSkip = document.getElementById('race-skip');
+    const raceReplay = document.getElementById('race-replay');
+    const RACE_DUR = 45000; // ~45 s на повторный просмотр
+    const ROW_H = 42;
+    let raceCtl = null;
+
+    function startRace() {
+      const frames = D.race;
+      let gmax = 1;
+      frames.forEach(f => f.top.forEach(t => { gmax = Math.max(gmax, t.plays); }));
+      const FRAME_MS = RACE_DUR / frames.length;
+
+      racebox.innerHTML = '';
+      racebox.style.height = (10 * ROW_H) + 'px';
+
+      const rows = new Map();
+      let timer = null, idx = 0;
+
+      function keyOf(t) { return t.name + '\u0000' + t.artist; }
+
+      function makeRow(t) {
+        const row = document.createElement('div');
+        row.className = 'race-row';
+        const rank = document.createElement('span');
+        rank.className = 'race-rank';
+        const meta = document.createElement('div');
+        meta.className = 'race-meta';
+        const name = document.createElement('div');
+        name.className = 'race-name';
+        name.textContent = t.name;
+        const artist = document.createElement('div');
+        artist.className = 'race-artist';
+        artist.textContent = t.artist;
+        meta.appendChild(name);
+        meta.appendChild(artist);
+        const track = document.createElement('div');
+        track.className = 'race-track';
+        const fill = document.createElement('div');
+        fill.className = 'race-fill';
+        track.appendChild(fill);
+        const plays = document.createElement('span');
+        plays.className = 'race-plays';
+        row.appendChild(rank);
+        row.appendChild(meta);
+        row.appendChild(track);
+        row.appendChild(plays);
+        racebox.appendChild(row);
+        return { row, rank, fill, plays };
+      }
+
+      function renderFrame(frame) {
+        const present = new Set();
+        frame.top.forEach((t, r) => {
+          const k = keyOf(t);
+          present.add(k);
+          let row = rows.get(k);
+          if (!row) { row = makeRow(t); rows.set(k, row); }
+          row.rank.textContent = r + 1;
+          row.row.style.top = (r * ROW_H) + 'px';
+          row.fill.style.width = (t.plays / gmax * 100) + '%';
+          row.plays.textContent = t.plays.toLocaleString('en-US');
+          row.row.classList.remove('dim');
+        });
+        for (const [k, row] of rows) {
+          if (!present.has(k)) {
+            row.row.classList.add('dim');
+            row.fill.style.width = '0';
+            setTimeout(() => { row.row.remove(); }, 400);
+            rows.delete(k);
+          }
+        }
+      }
+
+      function step() {
+        if (idx >= frames.length) { clearInterval(timer); timer = null; return; }
+        const f = frames[idx];
+        renderFrame(f);
+        racedate.textContent = f.t;
+        idx++;
+      }
+
+      step();
+      timer = setInterval(step, FRAME_MS);
+      return {
+        finish() {
+          if (timer) { clearInterval(timer); timer = null; }
+          renderFrame(frames[frames.length - 1]);
+          racedate.textContent = frames[frames.length - 1].t;
+        },
+        stop() {
+          if (timer) { clearInterval(timer); timer = null; }
+        }
+      };
+    }
+
+    function renderRace() {
+      if (raceCtl) raceCtl.stop();
+      raceCtl = startRace();
+    }
+
+    raceTab.hidden = false;
+    SUBCFG.race = {
+      tabs: [],
+      desc: { all: 'How your top 10 most played tracks evolved over time.' },
+      panes: { all: raceview },
+      render: { all: renderRace }
+    };
+    subState.race = 'all';
+    ALLPANES.push(raceview);
+    raceSkip.addEventListener('click', () => { if (raceCtl) raceCtl.finish(); });
+    raceReplay.addEventListener('click', () => { if (raceCtl) raceCtl.stop(); raceCtl = startRace(); });
+  }
+
   showView('general');
 }
 
-// ---------- top-tracks race replay (only when race data present) ----------
-(function () {
-  const frames = D.race;
-  if (!frames || !frames.length) return;
-  const btn = document.getElementById('racebtn');
-  const overlay = document.getElementById('raceoverlay');
-  const box = document.getElementById('racebox');
-  const racedate = document.getElementById('racedate');
-  const skipBtn = document.getElementById('race-skip');
-  const closeBtn = document.getElementById('race-close');
-  const RACE_DUR = 45000; // ~45 s на повторный просмотр
-  const ROW_H = 42;
-  let ctl = null;
-
-  function startRace(frames) {
-    let gmax = 1;
-    frames.forEach(f => f.top.forEach(t => { gmax = Math.max(gmax, t.plays); }));
-    const FRAME_MS = RACE_DUR / frames.length;
-
-    box.innerHTML = '';
-    box.style.height = (10 * ROW_H) + 'px';
-
-    const rows = new Map();
-    let timer = null, idx = 0;
-
-    function keyOf(t) { return t.name + '\u0000' + t.artist; }
-
-    function makeRow(t) {
-      const row = document.createElement('div');
-      row.className = 'race-row';
-      const rank = document.createElement('span');
-      rank.className = 'race-rank';
-      const meta = document.createElement('div');
-      meta.className = 'race-meta';
-      const name = document.createElement('div');
-      name.className = 'race-name';
-      name.textContent = t.name;
-      const artist = document.createElement('div');
-      artist.className = 'race-artist';
-      artist.textContent = t.artist;
-      meta.appendChild(name);
-      meta.appendChild(artist);
-      const track = document.createElement('div');
-      track.className = 'race-track';
-      const fill = document.createElement('div');
-      fill.className = 'race-fill';
-      track.appendChild(fill);
-      const plays = document.createElement('span');
-      plays.className = 'race-plays';
-      row.appendChild(rank);
-      row.appendChild(meta);
-      row.appendChild(track);
-      row.appendChild(plays);
-      box.appendChild(row);
-      return { row, rank, fill, plays };
-    }
-
-    function renderFrame(frame) {
-      const present = new Set();
-      frame.top.forEach((t, r) => {
-        const k = keyOf(t);
-        present.add(k);
-        let row = rows.get(k);
-        if (!row) { row = makeRow(t); rows.set(k, row); }
-        row.rank.textContent = r + 1;
-        row.row.style.top = (r * ROW_H) + 'px';
-        row.fill.style.width = (t.plays / gmax * 100) + '%';
-        row.plays.textContent = t.plays.toLocaleString('en-US');
-        row.row.classList.remove('dim');
-      });
-      for (const [k, row] of rows) {
-        if (!present.has(k)) {
-          row.row.classList.add('dim');
-          row.fill.style.width = '0';
-          setTimeout(() => { row.row.remove(); }, 400);
-          rows.delete(k);
-        }
-      }
-    }
-
-    function step() {
-      if (idx >= frames.length) { clearInterval(timer); timer = null; return; }
-      const f = frames[idx];
-      renderFrame(f);
-      racedate.textContent = f.t;
-      idx++;
-    }
-
-    step();
-    timer = setInterval(step, FRAME_MS);
-    return {
-      finish() {
-        if (timer) { clearInterval(timer); timer = null; }
-        renderFrame(frames[frames.length - 1]);
-        racedate.textContent = frames[frames.length - 1].t;
-      },
-      stop() {
-        if (timer) { clearInterval(timer); timer = null; }
-      }
-    };
-  }
-
-  function open() {
-    overlay.hidden = false;
-    ctl = startRace(frames);
-  }
-  function close() {
-    if (ctl) { ctl.stop(); ctl = null; }
-    overlay.hidden = true;
-  }
-  btn.hidden = false;
-  btn.addEventListener('click', open);
-  closeBtn.addEventListener('click', close);
-  skipBtn.addEventListener('click', () => { if (ctl) ctl.finish(); });
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !overlay.hidden) close();
-  });
-})();
 </script>
 </body>
 </html>
