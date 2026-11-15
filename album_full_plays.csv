@@ -1,7 +1,7 @@
 album_name,artist_name,full_album_plays,release_year,total_tracks
 Afro,Dizzy Gillespie,1,1954.0,7
-Somethin' Else,Cannonball Adderley,4,1958.0,6
 Somethin' Else (Rudy Van Gelder Edition),Cannonball Adderley,3,1958.0,6
+Somethin' Else,Cannonball Adderley,4,1958.0,6
 Nina Simone at Town Hall,Nina Simone,2,1959.0,11
 Little Girl Blue (2013 - Remaster),Nina Simone,1,1959.0,10
 The Shape Of Jazz To Come,Ornette Coleman,2,1959.0,6
@@ -12,8 +12,8 @@ Look To The Rainbow,Astrud Gilberto,1,1966.0,11
 Songs Of Leonard Cohen,Leonard Cohen,1,1967.0,10
 Odessey and Oracle (Mono Remastered),The Zombies,2,1968.0,12
 Led Zeppelin,Led Zeppelin,2,1969.0,9
-Led Zeppelin II (Remaster),Led Zeppelin,1,1969.0,9
 Led Zeppelin (Remaster),Led Zeppelin,1,1969.0,9
+Led Zeppelin II (Remaster),Led Zeppelin,1,1969.0,9
 Everybody Knows This Is Nowhere,Neil Young,1,1969.0,7
 Let It Bleed,The Rolling Stones,1,1969.0,9
 The Velvet Underground,The Velvet Underground,1,1969.0,10
@@ -22,6 +22,7 @@ Tapestry,Carole King,1,1971.0,12
 Coat Of Many Colors,Dolly Parton,2,1971.0,10
 Eat A Peach,Allman Brothers Band,1,1972.0,9
 Paul Simon,Paul Simon,1,1972.0,14
+Sabbath Bloody Sabbath,Black Sabbath,1,1973.0,8
 "The Wild, the Innocent & The E Street Shuffle",Bruce Springsteen,1,1973.0,7
 The Dark Side of the Moon,Pink Floyd,3,1973.0,10
 Closing Time,Tom Waits,1,1973.0,12
@@ -36,8 +37,8 @@ Stranger In Town,Bob Seger,1,1978.0,9
 Stained Class,Judas Priest,1,1978.0,11
 Rust Never Sleeps,Neil Young,1,1979.0,9
 Tchaikovsky: The Nutcracker,Pyotr Ilyich Tchaikovsky,1,1979.0,8
-Breakfast In America,Supertramp,1,1979.0,10
 Breakfast In America (Remastered 2026),Supertramp,1,1979.0,10
+Breakfast In America,Supertramp,1,1979.0,10
 The River,Bruce Springsteen,1,1980.0,20
 Moving Pictures,Rush,1,1981.0,7
 Hard Promises,Tom Petty and the Heartbreakers,1,1981.0,10
@@ -51,6 +52,7 @@ Tunnel Of Love,Bruce Springsteen,5,1987.0,12
 Hysteria,Def Leppard,1,1987.0,12
 Pump,Aerosmith,1,1989.0,10
 Gretchen Goes To Nebraska,King's X,1,1989.0,12
+Doolittle,Pixies,1,1989.0,15
 Full Moon Fever,Tom Petty,2,1989.0,12
 Nothing Face,Voivod,1,1989.0,9
 Чёрный альбом,Kino,1,1990.0,10
