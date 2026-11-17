@@ -2,8 +2,8 @@ album_name,artist_name,full_album_plays,release_year,total_tracks
 Afro,Dizzy Gillespie,1,1954.0,7
 Somethin' Else (Rudy Van Gelder Edition),Cannonball Adderley,3,1958.0,6
 Somethin' Else,Cannonball Adderley,4,1958.0,6
-Nina Simone at Town Hall,Nina Simone,2,1959.0,11
 Little Girl Blue (2013 - Remaster),Nina Simone,1,1959.0,10
+Nina Simone at Town Hall,Nina Simone,2,1959.0,11
 The Shape Of Jazz To Come,Ornette Coleman,2,1959.0,6
 The Freewheelin' Bob Dylan,Bob Dylan,1,1963.0,13
 The Astrud Gilberto Album,Astrud Gilberto,1,1965.0,11
@@ -25,8 +25,8 @@ Paul Simon,Paul Simon,1,1972.0,14
 Sabbath Bloody Sabbath,Black Sabbath,1,1973.0,8
 "The Wild, the Innocent & The E Street Shuffle",Bruce Springsteen,1,1973.0,7
 The Dark Side of the Moon,Pink Floyd,3,1973.0,10
-Closing Time,Tom Waits,1,1973.0,12
 Closing Time (Remastered),Tom Waits,1,1973.0,12
+Closing Time,Tom Waits,1,1973.0,12
 Honky Tonk Heroes,Waylon Jennings,4,1973.0,10
 Born To Run,Bruce Springsteen,4,1975.0,8
 Zuma,Neil Young,1,1975.0,9
@@ -37,8 +37,8 @@ Stranger In Town,Bob Seger,1,1978.0,9
 Stained Class,Judas Priest,1,1978.0,11
 Rust Never Sleeps,Neil Young,1,1979.0,9
 Tchaikovsky: The Nutcracker,Pyotr Ilyich Tchaikovsky,1,1979.0,8
-Breakfast In America (Remastered 2026),Supertramp,1,1979.0,10
 Breakfast In America,Supertramp,1,1979.0,10
+Breakfast In America (Remastered 2026),Supertramp,1,1979.0,10
 The River,Bruce Springsteen,1,1980.0,20
 Moving Pictures,Rush,1,1981.0,7
 Hard Promises,Tom Petty and the Heartbreakers,1,1981.0,10
@@ -171,5 +171,6 @@ Bleeds,Wednesday,1,2025.0,12
 Wuthering Heights,Charli xcx,1,2026.0,12
 BULLY,Kanye West,1,2026.0,18
 Nothing's About to Happen to Me,Mitski,2,2026.0,11
+Lost Weekend,Phoebe Bridgers,1,2026.0,16
 THIS MUSIC MAY CONTAIN HOPE.,RAYE,1,2026.0,17
 "Нет, это я хочу умереть в Новом Орлеане",Золотые зубы,2,2026.0,8
