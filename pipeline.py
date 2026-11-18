@@ -782,6 +782,29 @@ def step_generate_dashboard(conn=None):
     ARTIST_DYN_N = 100
     TRACK_DYN_N = 25
 
+    def race_frames(events, n_frames=120):
+        """Хронологический топ-10 треков по мере накопления прослушиваний."""
+        ev = sorted(events, key=lambda e: (e["ts"], e["track_id"]))
+        if not ev:
+            return []
+        step = max(1, len(ev) // n_frames)
+        counter = Counter()
+        info = {}
+        frames = []
+        for i, e in enumerate(ev):
+            counter[e["track_id"]] += 1
+            info.setdefault(e["track_id"], (e["track_name"], e["artist_name"]))
+            if (i + 1) % step == 0 or i == len(ev) - 1:
+                top = sorted(
+                    counter.items(),
+                    key=lambda kv: (-kv[1], info[kv[0]][0].lower()))[:10]
+                frames.append({
+                    "t": e["ts"].strftime("%Y-%m-%d"),
+                    "top": [{"name": info[t][0], "artist": info[t][1], "plays": c}
+                            for t, c in top],
+                })
+        return frames
+
     conn = conn or get_connection()
     cur = conn.cursor()
     cur.execute("SELECT EXTRACT(TIMEZONE_HOUR FROM now())::int, "
@@ -938,6 +961,7 @@ def step_generate_dashboard(conn=None):
              for a, lst in gen.items()),
             key=lambda x: (-x["plays"], x["name"].lower()))},
         "tracks": top_tracks,
+        "race": race_frames(events, 120),
         "full_albums": full_albums,
         "time_range": {"min": t0, "max": t1},
         "artist_dynamics": artist_dynamics,
