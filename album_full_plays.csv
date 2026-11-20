@@ -1,7 +1,7 @@
 album_name,artist_name,full_album_plays,release_year,total_tracks
 Afro,Dizzy Gillespie,1,1954.0,7
-Somethin' Else (Rudy Van Gelder Edition),Cannonball Adderley,3,1958.0,6
 Somethin' Else,Cannonball Adderley,4,1958.0,6
+Somethin' Else (Rudy Van Gelder Edition),Cannonball Adderley,3,1958.0,6
 Little Girl Blue (2013 - Remaster),Nina Simone,1,1959.0,10
 Nina Simone at Town Hall,Nina Simone,2,1959.0,11
 The Shape Of Jazz To Come,Ornette Coleman,2,1959.0,6
@@ -11,9 +11,9 @@ Highway 61 Revisited,Bob Dylan,2,1965.0,9
 Look To The Rainbow,Astrud Gilberto,1,1966.0,11
 Songs Of Leonard Cohen,Leonard Cohen,1,1967.0,10
 Odessey and Oracle (Mono Remastered),The Zombies,2,1968.0,12
-Led Zeppelin,Led Zeppelin,2,1969.0,9
 Led Zeppelin (Remaster),Led Zeppelin,1,1969.0,9
 Led Zeppelin II (Remaster),Led Zeppelin,1,1969.0,9
+Led Zeppelin,Led Zeppelin,2,1969.0,9
 Everybody Knows This Is Nowhere,Neil Young,1,1969.0,7
 Let It Bleed,The Rolling Stones,1,1969.0,9
 The Velvet Underground,The Velvet Underground,1,1969.0,10
@@ -25,8 +25,8 @@ Paul Simon,Paul Simon,1,1972.0,14
 Sabbath Bloody Sabbath,Black Sabbath,1,1973.0,8
 "The Wild, the Innocent & The E Street Shuffle",Bruce Springsteen,1,1973.0,7
 The Dark Side of the Moon,Pink Floyd,3,1973.0,10
-Closing Time (Remastered),Tom Waits,1,1973.0,12
 Closing Time,Tom Waits,1,1973.0,12
+Closing Time (Remastered),Tom Waits,1,1973.0,12
 Honky Tonk Heroes,Waylon Jennings,4,1973.0,10
 Born To Run,Bruce Springsteen,4,1975.0,8
 Zuma,Neil Young,1,1975.0,9
@@ -64,6 +64,7 @@ Hvis Lyset Tar Oss,Burzum,1,1994.0,4
 Welcome to Sky Valley,Kyuss,1,1994.0,10
 Dummy,Portishead,3,1994.0,11
 Wildflowers,Tom Petty,1,1994.0,15
+Post,Björk,2,1995.0,11
 The Bends,Radiohead,1,1995.0,12
 If You're Feeling Sinister,Belle and Sebastian,2,1996.0,10
 Ænima,TOOL,4,1996.0,15
@@ -171,6 +172,7 @@ LUX,ROSALÍA,1,2025.0,15
 Bleeds,Wednesday,1,2025.0,12
 Wuthering Heights,Charli xcx,1,2026.0,12
 "Music, Fashion, Film",Charli xcx,4,2026.0,11
+Beam Cottage,Johnny Flynn,1,2026.0,14
 BULLY,Kanye West,1,2026.0,18
 Nothing's About to Happen to Me,Mitski,2,2026.0,11
 Lost Weekend,Phoebe Bridgers,1,2026.0,16
