@@ -1,9 +1,9 @@
 album_name,artist_name,full_album_plays,release_year,total_tracks
 Afro,Dizzy Gillespie,1,1954.0,7
-Somethin' Else,Cannonball Adderley,4,1958.0,6
 Somethin' Else (Rudy Van Gelder Edition),Cannonball Adderley,3,1958.0,6
-Little Girl Blue (2013 - Remaster),Nina Simone,1,1959.0,10
+Somethin' Else,Cannonball Adderley,4,1958.0,6
 Nina Simone at Town Hall,Nina Simone,2,1959.0,11
+Little Girl Blue (2013 - Remaster),Nina Simone,1,1959.0,10
 The Shape Of Jazz To Come,Ornette Coleman,2,1959.0,6
 The Freewheelin' Bob Dylan,Bob Dylan,1,1963.0,13
 The Astrud Gilberto Album,Astrud Gilberto,1,1965.0,11
@@ -25,8 +25,8 @@ Paul Simon,Paul Simon,1,1972.0,14
 Sabbath Bloody Sabbath,Black Sabbath,1,1973.0,8
 "The Wild, the Innocent & The E Street Shuffle",Bruce Springsteen,1,1973.0,7
 The Dark Side of the Moon,Pink Floyd,3,1973.0,10
-Closing Time,Tom Waits,1,1973.0,12
 Closing Time (Remastered),Tom Waits,1,1973.0,12
+Closing Time,Tom Waits,1,1973.0,12
 Honky Tonk Heroes,Waylon Jennings,4,1973.0,10
 Born To Run,Bruce Springsteen,4,1975.0,8
 Zuma,Neil Young,1,1975.0,9
@@ -57,6 +57,7 @@ Full Moon Fever,Tom Petty,2,1989.0,12
 Nothing Face,Voivod,1,1989.0,9
 Чёрный альбом,Kino,1,1990.0,10
 Ragged Glory,Neil Young,2,1990.0,10
+"I, Jonathan",Jonathan Richman,2,1992.0,10
 Harvest Moon,Neil Young,1,1992.0,10
 Experience,The Prodigy,1,1992.0,9
 Siamese Dream,The Smashing Pumpkins,1,1993.0,13
@@ -170,8 +171,8 @@ Against the Fall of Night,Sungazer,1,2024.0,9
 несколько вопросов самому себе,конец солнечных дней,1,2024.0,19
 LUX,ROSALÍA,1,2025.0,15
 Bleeds,Wednesday,1,2025.0,12
-Wuthering Heights,Charli xcx,1,2026.0,12
 "Music, Fashion, Film",Charli xcx,4,2026.0,11
+Wuthering Heights,Charli xcx,1,2026.0,12
 Beam Cottage,Johnny Flynn,1,2026.0,14
 BULLY,Kanye West,1,2026.0,18
 Nothing's About to Happen to Me,Mitski,2,2026.0,11
